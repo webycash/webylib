@@ -1,0 +1,80 @@
+[package]
+name = "webylib"
+version = "0.1.1"
+edition = "2021"
+rust-version = "1.70"
+description = "Webcash HD wallet library — bearer e-cash with BIP32-style key derivation, SQLite storage, and Webcash server client"
+license = "MPL-2.0"
+authors = ["Webcash Developers"]
+homepage = "https://weby.cash"
+repository = "https://github.com/webycash/webylib"
+documentation = "https://docs.rs/webylib"
+readme = "README.md"
+keywords = ["webcash", "wallet", "payments", "bearer-cash", "hd-wallet"]
+categories = ["cryptography", "cryptography::cryptocurrencies", "api-bindings", "command-line-utilities"]
+include = [
+    "src/**/*",
+    "tests/**/*",
+    "LICENSE",
+    "README.md",
+    "docs/webcash/WEBCASH.md",
+]
+
+[lib]
+name = "webylib"
+
+[[bin]]
+name = "webyc"
+path = "src/bin/cli.rs"
+
+[dependencies]
+# Core
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+anyhow = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+async-trait = "0.1"
+
+# Cryptography
+sha2 = "0.10"
+hmac = "0.12"
+rand = "0.9"
+rand_chacha = "0.9"
+getrandom = "0.2"
+aes = "0.7"
+block-modes = "0.8"
+aes-gcm = "0.10"
+argon2 = "0.5"
+hkdf = "0.12"
+
+# Database
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+
+# HTTP client — 0.11 avoids ICU 2.0 incompatibility chain
+reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+
+# CLI
+clap = { version = "4.0", features = ["derive"] }
+rpassword = "7.3"
+
+# Utilities
+hex = "0.4"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
+uuid = { version = "1.0", features = ["v4"] }
+url = "2.5"
+
+# Security
+zeroize = { version = "1.5", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3.0"
+mockito = "1.7.0"
+
+[features]
+default = []
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
