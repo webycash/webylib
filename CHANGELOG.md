@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `recover()` / `recover_from_wallet()` return `RecoveryResult` instead of `String`
 - `HDWallet` now derives `Zeroize` + `ZeroizeOnDrop` (was manual)
 - `endpoints` module moved from `lib.rs` to `server.rs`
-- MSRV bumped from 1.70 to 1.75
+- MSRV bumped from 1.70 to 1.85
 - `clap` and `rpassword` are now optional (`cli` feature)
 
 ### Removed

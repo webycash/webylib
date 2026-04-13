@@ -96,11 +96,11 @@ jobs:
 
   # ── MSRV ─────────────────────────────────────────────────────────
   msrv:
-    name: MSRV (1.75)
+    name: MSRV (1.85)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.75
+      - uses: dtolnay/rust-toolchain@1.85
       - run: cargo build --no-default-features --features bundled-sqlite
 
   # ── Integration tests ────────────────────────────────────────────
