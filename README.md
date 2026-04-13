@@ -1,153 +1,193 @@
-# Webcash Rust Implementation
+<p align="center">
+<pre>
+                _           _ _ _
+ __      _____ | |__  _   _| (_) |__
+ \ \ /\ / / _ \| '_ \| | | | | | '_ \
+  \ V  V /  __/| |_) | |_| | | | |_) |
+   \_/\_/ \___||_.__/ \__, |_|_|_.__/
+                      |___/
+</pre>
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Crates.io](https://img.shields.io/crates/v/webylib.svg)](https://crates.io/crates/webylib)
-[![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org/)
+<p align="center">
+<em>Production-grade Webcash HD wallet library with full C FFI for cross-platform SDKs</em>
+</p>
 
-A Rust implementation of the Webcash electronic cash wallet system.
+<p align="center">
+<a href="https://crates.io/crates/webylib"><img src="https://img.shields.io/crates/v/webylib.svg" alt="crates.io"></a>
+<a href="https://github.com/webycash/webylib/actions/workflows/ci.yml"><img src="https://github.com/webycash/webylib/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+</p>
 
-## Overview
+---
 
-Webcash is an experimental electronic cash system operated by Webcash LLC. This Rust implementation provides a modern, memory-safe wallet client that maintains full compatibility with the Webcash protocol:
+## Install
 
-- Memory safety through Rust's ownership system
-- Native performance with zero-cost abstractions
-- Cryptographic operations with secure memory handling
-- Compatibility with existing Webcash Python and C++ implementations
-- C bindings for integration with other languages
+**As a Rust dependency:**
 
-**Scope**: This implementation focuses on wallet functionality and server API calls. It does not include mining or server-side implementation.
+```toml
+[dependencies]
+webylib = "0.2"
+```
 
-## Features
+**CLI tool (macOS / Linux):**
 
-- ✅ **Deterministic HD Wallet**: BIP32-style hierarchical key generation
-- ✅ **Secure Storage**: SQLite-based wallet with master secret encryption
-- ✅ **Server Integration**: Complete Webcash server API compatibility
-- ✅ **C Bindings**: FFI interface for C/C++/other languages
-- ✅ **Comprehensive Testing**: Unit tests, integration tests, and documentation
+```bash
+curl -sSf https://raw.githubusercontent.com/webycash/webylib/main/install.sh | sh
+```
+
+**CLI tool (Windows PowerShell):**
+
+```powershell
+iwr https://raw.githubusercontent.com/webycash/webylib/main/install.ps1 -UseB | iex
+```
+
+**From source (requires Rust 1.85+):**
+
+```bash
+cargo install webylib
+```
 
 ## Quick Start
 
-### Prerequisites
+### Rust
 
-- **Rust**: 1.85+ with Cargo
-- **SQLite3**: Development libraries
-- **OpenSSL**: Development libraries (for HTTPS)
+```rust
+use webylib::{Wallet, SecretWebcash, Amount};
 
-### Installation
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create or open a wallet
+    let wallet = Wallet::open("my_wallet.db").await?;
 
-```bash
-# Clone the repository
-git clone <repository-url>
-cd webylib
+    // Insert webcash (ownership transfer via server)
+    let wc = SecretWebcash::parse("e1.00000000:secret:abcdef...")?;
+    wallet.insert(wc).await?;
 
-# Build the project
-cargo build --release
+    // Check balance
+    let balance = wallet.balance().await?;
+    println!("Balance: {}", balance);
 
-# Run tests
-cargo test
+    // Pay someone
+    let payment = wallet.pay(Amount::from_str("0.5")?, "coffee").await?;
+    println!("{}", payment);
+
+    Ok(())
+}
 ```
 
-### Usage
+### C / FFI
 
-```bash
-# Initialize a new wallet
-./target/release/webyc setup
+```c
+#include "webylib.h"
 
-# Check wallet balance
-./target/release/webyc info
+WebyWallet *wallet = NULL;
+int rc = weby_wallet_open("my_wallet.db", &wallet);
+if (rc != 0) {
+    printf("Error: %s\n", weby_last_error_message());
+    return 1;
+}
 
-# Insert webcash
-./target/release/webyc insert "e1.00000000:secret:abcdef..."
+char *balance = NULL;
+weby_wallet_balance(wallet, &balance);
+printf("Balance: %s\n", balance);
+weby_free_string(balance);
 
-# Send payment
-./target/release/webyc pay 0.50000000 "For coffee"
+weby_wallet_free(wallet);
 ```
 
-## Architecture
+### CLI
 
-The implementation consists of two main components:
+```bash
+webyc setup
+webyc info
+webyc insert "e1.00000000:secret:abc123..."
+webyc pay 0.5 --memo "coffee"
+webyc check
+webyc merge --group 20
+```
 
-### Core Library (`webylib`)
+## Features
 
-Located in `src/`, provides:
-- **Amount handling** with 8-decimal precision
-- **Webcash types** (SecretWebcash, PublicWebcash)
-- **Cryptographic utilities** (SHA256, secure random)
-- **HD wallet** deterministic key generation
-- **Server communication** HTTP client
-- **Wallet storage** SQLite database operations
+- **HD Wallet** — BIP32-style 4-chain derivation (Receive, Pay, Change, Mining)
+- **SQLite + WAL** — Crash-safe local storage with Write-Ahead Logging
+- **Encryption** — Argon2 + AES-256-GCM for seed and database encryption
+- **Full FFI** — C ABI exports for Python, Node.js, .NET, Go, Swift, Java, Kotlin, C++
+- **Zeroize** — All secret material zeroed on drop
+- **No OpenSSL** — Pure Rust TLS (rustls), cross-compiles everywhere
+- **Exchange-ready** — Transactional safety, optional seed injection, structured error codes
 
-### CLI Tool (`webyc`)
+## Platform Support
 
-Command-line interface in `src/bin/cli.rs` providing:
-- Wallet setup and management
-- Payment operations
-- Balance checking
-- Recovery functionality
+| Platform | Architecture | Artifact |
+|----------|-------------|----------|
+| Linux | x86_64, aarch64 | `.so` + `.a` + CLI |
+| macOS | x86_64, aarch64 | `.dylib` + `.a` + CLI |
+| Windows | x86_64 (MSVC) | `.dll` + `.lib` + CLI |
+| iOS | aarch64, aarch64-sim | `.a` (static lib) |
+| Android | aarch64, armv7, x86_64 | `.so` (shared lib) |
+| FreeBSD | x86_64 | CLI (test only) |
+
+## Feature Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `bundled-sqlite` | yes | Compile SQLite from source (no system dep) |
+| `cli` | yes | Build the `webyc` command-line tool |
+| `ffi` | no | Build C FFI exports (`cdylib` + `staticlib`) |
+| `passkey` | no | WebAuthn/passkey decryption support |
+
+## Module Structure
+
+```
+src/
+├── lib.rs              # Crate root — re-exports only
+├── protocol.rs         # VERSION, TERMS_OF_SERVICE
+├── amount.rs           # 8-decimal Amount type (wats)
+├── webcash.rs          # SecretWebcash, PublicWebcash, SecureString
+├── crypto.rs           # SHA256, HMAC-SHA512, CryptoSecret, AES-256-GCM
+├── hd.rs               # HDWallet, ChainCode (4-chain derivation)
+├── error.rs            # Error enum, Result type alias
+├── server.rs           # ServerClient, ServerClientTrait, endpoints
+├── biometric.rs        # BiometricEncryption, password encryption
+├── wallet/
+│   ├── mod.rs          # Wallet struct, open/open_with_seed/open_memory
+│   ├── schema.rs       # DB schema, WAL mode, migrations
+│   ├── operations.rs   # insert, pay, merge, recover, check, balance
+│   ├── encryption.rs   # Database and seed encryption
+│   └── snapshot.rs     # JSON export/import for backup
+└── ffi/
+    ├── mod.rs          # FFI module root and memory rules
+    ├── error.rs        # WebyErrorCode, thread-local error messages
+    ├── types.rs        # C string conversions, weby_free_string
+    └── wallet_ops.rs   # All extern "C" wallet operations
+```
 
 ## Documentation
 
-- **[📚 Library Documentation](./docs/)**: Comprehensive API docs
-- **[🏗️ Architecture](./docs/architecture/)**: System design and implementation
-- **[🔒 Security](./docs/security/)**: Security analysis and threat model
-- **[🔄 Implementation Comparison](./docs/migration/)**: Comparison with Python/C++ implementations
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/ARCHITECTURE.md) | System design, trust model, transaction flows |
+| [FFI Reference](docs/FFI.md) | Complete C API reference with examples for 8 languages |
+| [Protocol](docs/PROTOCOL.md) | Webcash protocol specification and API endpoints |
+| [Security](docs/SECURITY.md) | Threat model, cryptographic guarantees, compliance |
+| [Development](docs/DEVELOPMENT.md) | Build from source, run tests, CI pipeline |
+| [CONTRIBUTING](CONTRIBUTING.md) | Pull request process, commit format, design principles |
+| [CHANGELOG](CHANGELOG.md) | Version history and release notes |
 
-## Development Status
-
-### ✅ Completed (Phase 1)
-- [x] Core data types (Amount, SecretWebcash, PublicWebcash)
-- [x] Cryptographic utilities and secure memory handling
-- [x] Basic project structure and build system
-- [x] Comprehensive error handling
-- [x] Unit tests for all implemented components
-
-### 🚧 In Progress (Phase 2)
-- [ ] SQLite wallet storage implementation
-- [ ] Full wallet operations (insert, pay, check)
-- [ ] Server integration and API compatibility
-
-### 📋 Planned (Phase 3-5)
-- [ ] CLI interface completion
-- [ ] C bindings and FFI
-- [ ] Performance optimization
-- [ ] Comprehensive integration testing
-
-## Security Considerations
-
-This implementation prioritizes security:
-
-- **Memory Safety**: Rust prevents buffer overflows, use-after-free, and data races
-- **Secure Strings**: Sensitive data uses zeroize-on-drop types
-- **Input Validation**: Strict bounds checking on all user inputs
-- **Cryptographic Security**: Proper use of SHA256 and secure random generation
-- **Wallet Security**: Master secret encryption and secure storage
-
-## Testing
+## Building the FFI Library
 
 ```bash
-# Run all tests
-cargo test
+# Shared library (.so / .dylib / .dll)
+cargo build --release --features ffi
 
-# Run with coverage (requires llvm-tools-preview)
-cargo install cargo-llvm-cov
-cargo llvm-cov --open
-```
+# Static library (.a / .lib)
+cargo build --release --features ffi
 
-## Contributing
+# Generate C header
+cbindgen --crate webylib --output include/webylib.h
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
-
-### Development Setup
-
-```bash
-# Install Rust toolchain
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Clone and setup
-git clone <repository-url>
-cd webylib
-cargo build
+# Both are produced in target/release/
 ```
 
 ## License
@@ -156,10 +196,6 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 ## Related Projects
 
-- [Original Python Implementation](https://github.com/kanzure/webcash)
-- [C++ Webminer](https://github.com/maaku/webminer)
-- [Webcash Protocol Specification](https://webcash.org)
-
-## Disclaimer
-
-This is experimental software. Use at your own risk. The Webcash system is experimental and may have security or stability issues.
+- [Webcash Protocol](https://webcash.org) — Official server and specification
+- [kanzure/webcash](https://github.com/kanzure/webcash) — Python reference implementation
+- [harmoniis-wallet](https://github.com/harmoniis/harmoniis-wallet) — Marketplace wallet built on webylib
