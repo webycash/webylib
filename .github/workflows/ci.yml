@@ -136,7 +136,7 @@ jobs:
             runner: ubuntu-24.04-arm
             features: bundled-sqlite,cli,ffi
           - target: x86_64-apple-darwin
-            runner: macos-13
+            runner: macos-latest
             features: bundled-sqlite,cli,ffi
           - target: aarch64-apple-darwin
             runner: macos-latest
@@ -187,26 +187,32 @@ jobs:
         with:
           ndk-version: r27
 
-      - name: Configure Android linker
+      - name: Configure Android toolchain
         if: matrix.android
         shell: bash
         run: |
           NDK="${{ steps.ndk.outputs.ndk-path }}"
-          HOST_TAG="linux-x86_64"
-          # Map Rust target to NDK toolchain prefix
+          TOOLCHAIN="${NDK}/toolchains/llvm/prebuilt/linux-x86_64"
+          # Map Rust target to NDK clang prefix (with API level for linker)
           case "${{ matrix.target }}" in
-            aarch64-linux-android)   LLVM_PREFIX="aarch64-linux-android" ;;
-            armv7-linux-androideabi) LLVM_PREFIX="armv7a-linux-androideabi" ;;
-            x86_64-linux-android)   LLVM_PREFIX="x86_64-linux-android" ;;
+            aarch64-linux-android)   CLANG_PREFIX="aarch64-linux-android24" ; BARE_PREFIX="aarch64-linux-android" ;;
+            armv7-linux-androideabi) CLANG_PREFIX="armv7a-linux-androideabi24" ; BARE_PREFIX="arm-linux-androideabi" ;;
+            x86_64-linux-android)   CLANG_PREFIX="x86_64-linux-android24" ; BARE_PREFIX="x86_64-linux-android" ;;
           esac
-          TOOLCHAIN="${NDK}/toolchains/llvm/prebuilt/${HOST_TAG}"
-          CC="${TOOLCHAIN}/bin/${LLVM_PREFIX}24-clang"
+          CC="${TOOLCHAIN}/bin/${CLANG_PREFIX}-clang"
           AR="${TOOLCHAIN}/bin/llvm-ar"
-          # Uppercase target with hyphens → underscores for env vars
+          RANLIB="${TOOLCHAIN}/bin/llvm-ranlib"
+          # Cargo target env (uppercase, hyphens → underscores)
           ENV_TARGET=$(echo "${{ matrix.target }}" | tr 'a-z-' 'A-Z_')
           echo "CC_${ENV_TARGET}=${CC}" >> "$GITHUB_ENV"
           echo "AR_${ENV_TARGET}=${AR}" >> "$GITHUB_ENV"
+          echo "RANLIB_${ENV_TARGET}=${RANLIB}" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_${ENV_TARGET}_LINKER=${CC}" >> "$GITHUB_ENV"
+          # ring/cc crate looks for bare tool names — add NDK bin to PATH
+          echo "${TOOLCHAIN}/bin" >> "$GITHUB_PATH"
+          # Create symlinks for bare tool names that ring expects
+          ln -sf "${CC}" "${TOOLCHAIN}/bin/${BARE_PREFIX}-clang"
+          ln -sf "${TOOLCHAIN}/bin/llvm-ar" "${TOOLCHAIN}/bin/${BARE_PREFIX}-ar"
 
       - name: Build (desktop with CLI)
         if: "!matrix.lib_only"
