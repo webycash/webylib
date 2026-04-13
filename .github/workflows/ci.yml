@@ -128,16 +128,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Desktop / Server
+          # Desktop / Server — native builds
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
             features: bundled-sqlite,cli,ffi
           - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-latest
+            runner: ubuntu-24.04-arm
             features: bundled-sqlite,cli,ffi
-            cross: true
           - target: x86_64-apple-darwin
-            runner: macos-latest
+            runner: macos-13
             features: bundled-sqlite,cli,ffi
           - target: aarch64-apple-darwin
             runner: macos-latest
@@ -145,7 +144,7 @@ jobs:
           - target: x86_64-pc-windows-msvc
             runner: windows-latest
             features: bundled-sqlite,cli,ffi
-          # Mobile — library only (no CLI)
+          # Mobile — library only (no CLI), native cross from macOS/Linux
           - target: aarch64-apple-ios
             runner: macos-latest
             features: bundled-sqlite,ffi
@@ -158,17 +157,17 @@ jobs:
             runner: ubuntu-latest
             features: bundled-sqlite,ffi
             lib_only: true
-            cross: true
+            android: true
           - target: armv7-linux-androideabi
             runner: ubuntu-latest
             features: bundled-sqlite,ffi
             lib_only: true
-            cross: true
+            android: true
           - target: x86_64-linux-android
             runner: ubuntu-latest
             features: bundled-sqlite,ffi
             lib_only: true
-            cross: true
+            android: true
     steps:
       - uses: actions/checkout@v4
 
@@ -181,31 +180,41 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Install cross (for cross-compilation)
-        if: matrix.cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
-
       - name: Setup Android NDK
-        if: contains(matrix.target, 'android')
+        if: matrix.android
+        id: ndk
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r27
 
-      - name: Build (native)
-        if: "!matrix.cross && !matrix.lib_only"
+      - name: Configure Android linker
+        if: matrix.android
+        shell: bash
+        run: |
+          NDK="${{ steps.ndk.outputs.ndk-path }}"
+          HOST_TAG="linux-x86_64"
+          # Map Rust target to NDK toolchain prefix
+          case "${{ matrix.target }}" in
+            aarch64-linux-android)   LLVM_PREFIX="aarch64-linux-android" ;;
+            armv7-linux-androideabi) LLVM_PREFIX="armv7a-linux-androideabi" ;;
+            x86_64-linux-android)   LLVM_PREFIX="x86_64-linux-android" ;;
+          esac
+          TOOLCHAIN="${NDK}/toolchains/llvm/prebuilt/${HOST_TAG}"
+          CC="${TOOLCHAIN}/bin/${LLVM_PREFIX}24-clang"
+          AR="${TOOLCHAIN}/bin/llvm-ar"
+          # Uppercase target with hyphens → underscores for env vars
+          ENV_TARGET=$(echo "${{ matrix.target }}" | tr 'a-z-' 'A-Z_')
+          echo "CC_${ENV_TARGET}=${CC}" >> "$GITHUB_ENV"
+          echo "AR_${ENV_TARGET}=${AR}" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_${ENV_TARGET}_LINKER=${CC}" >> "$GITHUB_ENV"
+
+      - name: Build (desktop with CLI)
+        if: "!matrix.lib_only"
         run: cargo build --release --target ${{ matrix.target }} --no-default-features --features ${{ matrix.features }}
 
-      - name: Build library only (native)
-        if: "!matrix.cross && matrix.lib_only"
+      - name: Build (library only)
+        if: matrix.lib_only
         run: cargo build --release --target ${{ matrix.target }} --lib --no-default-features --features ${{ matrix.features }}
-
-      - name: Build (cross)
-        if: "matrix.cross && !matrix.lib_only"
-        run: cross build --release --target ${{ matrix.target }} --no-default-features --features ${{ matrix.features }}
-
-      - name: Build library only (cross)
-        if: matrix.cross && matrix.lib_only
-        run: cross build --release --target ${{ matrix.target }} --lib --no-default-features --features ${{ matrix.features }}
 
       - name: Package release
         shell: bash
@@ -217,12 +226,10 @@ jobs:
           cp LICENSE README.md CHANGELOG.md "$STAGING/"
 
           if [ "${{ matrix.lib_only }}" = "true" ]; then
-            # Library-only targets: include .a / .so / .dylib
             find "target/${TARGET}/release" -maxdepth 1 \
               \( -name '*.a' -o -name '*.so' -o -name '*.dylib' -o -name '*.dll' -o -name '*.lib' \) \
               -exec cp {} "$STAGING/" \;
           else
-            # Desktop targets: include binary + libraries
             if [ "${{ runner.os }}" = "Windows" ]; then
               cp "target/${TARGET}/release/webyc.exe" "$STAGING/"
             else
@@ -234,7 +241,12 @@ jobs:
           fi
 
           tar czf "${STAGING}.tar.gz" "$STAGING"
-          shasum -a 256 "${STAGING}.tar.gz" > "${STAGING}.tar.gz.sha256"
+          # sha256sum works on Linux and Git Bash (Windows); shasum on macOS
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${STAGING}.tar.gz" > "${STAGING}.tar.gz.sha256"
+          else
+            shasum -a 256 "${STAGING}.tar.gz" > "${STAGING}.tar.gz.sha256"
+          fi
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2

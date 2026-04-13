@@ -56,8 +56,8 @@ hkdf = "0.12"
 # Database
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 
-# HTTP client — 0.11 avoids ICU 2.0 incompatibility chain
-reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+# HTTP client — rustls-tls only (no OpenSSL), enables cross-compilation
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 
 # CLI (optional — not needed by library consumers)
 clap = { version = "4.0", features = ["derive"], optional = true }
