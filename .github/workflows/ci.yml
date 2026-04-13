@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
 
@@ -11,13 +12,13 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # ── Test matrix ──────────────────────────────────────────────────
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
-
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +27,11 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Cache cargo registry
+      - name: MSVC setup (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Cache cargo
         uses: actions/cache@v4
         with:
           path: |
@@ -40,14 +45,65 @@ jobs:
         run: cargo fmt --check
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --no-default-features --features bundled-sqlite,cli -- -D warnings
 
       - name: Build
-        run: cargo build
+        run: cargo build --no-default-features --features bundled-sqlite,cli
 
       - name: Unit tests
-        run: cargo test --test unit_tests
+        run: cargo test --no-default-features --features bundled-sqlite,cli --test unit_tests
 
+      - name: Build FFI
+        run: cargo build --no-default-features --features bundled-sqlite,ffi
+
+  # ── Mobile compile check ─────────────────────────────────────────
+  mobile-check:
+    name: Mobile check (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-ios
+            runner: macos-latest
+          - target: aarch64-apple-ios-sim
+            runner: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Check (library only)
+        run: cargo check --target ${{ matrix.target }} --lib --no-default-features --features bundled-sqlite,ffi
+
+  # ── FreeBSD ──────────────────────────────────────────────────────
+  test-freebsd:
+    name: Test (FreeBSD)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build & test on FreeBSD
+        uses: cross-platform-actions/action@v0.32.0
+        with:
+          operating_system: freebsd
+          version: '14.2'
+          run: |
+            sudo pkg install -y curl
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            . $HOME/.cargo/env
+            cargo build --release --no-default-features --features bundled-sqlite,cli
+            cargo test --release --no-default-features --features bundled-sqlite,cli --test unit_tests
+
+  # ── MSRV ─────────────────────────────────────────────────────────
+  msrv:
+    name: MSRV (1.75)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.75
+      - run: cargo build --no-default-features --features bundled-sqlite
+
+  # ── Integration tests ────────────────────────────────────────────
   integration:
     name: Integration tests
     runs-on: ubuntu-latest
@@ -61,10 +117,138 @@ jobs:
         run: cargo test --test integration_tests
         if: env.TEST_WEBCASH_SECRET != ''
 
-  msrv:
-    name: MSRV (1.70)
+  # ── Release builds ───────────────────────────────────────────────
+  release:
+    name: Release (${{ matrix.target }})
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          # Desktop / Server
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            features: bundled-sqlite,cli,ffi
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            features: bundled-sqlite,cli,ffi
+            cross: true
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            features: bundled-sqlite,cli,ffi
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            features: bundled-sqlite,cli,ffi
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            features: bundled-sqlite,cli,ffi
+          # Mobile — library only (no CLI)
+          - target: aarch64-apple-ios
+            runner: macos-latest
+            features: bundled-sqlite,ffi
+            lib_only: true
+          - target: aarch64-apple-ios-sim
+            runner: macos-latest
+            features: bundled-sqlite,ffi
+            lib_only: true
+          - target: aarch64-linux-android
+            runner: ubuntu-latest
+            features: bundled-sqlite,ffi
+            lib_only: true
+            cross: true
+          - target: armv7-linux-androideabi
+            runner: ubuntu-latest
+            features: bundled-sqlite,ffi
+            lib_only: true
+            cross: true
+          - target: x86_64-linux-android
+            runner: ubuntu-latest
+            features: bundled-sqlite,ffi
+            lib_only: true
+            cross: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: MSVC setup (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install cross (for cross-compilation)
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Setup Android NDK
+        if: contains(matrix.target, 'android')
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27
+
+      - name: Build (native)
+        if: "!matrix.cross && !matrix.lib_only"
+        run: cargo build --release --target ${{ matrix.target }} --no-default-features --features ${{ matrix.features }}
+
+      - name: Build library only (native)
+        if: "!matrix.cross && matrix.lib_only"
+        run: cargo build --release --target ${{ matrix.target }} --lib --no-default-features --features ${{ matrix.features }}
+
+      - name: Build (cross)
+        if: "matrix.cross && !matrix.lib_only"
+        run: cross build --release --target ${{ matrix.target }} --no-default-features --features ${{ matrix.features }}
+
+      - name: Build library only (cross)
+        if: matrix.cross && matrix.lib_only
+        run: cross build --release --target ${{ matrix.target }} --lib --no-default-features --features ${{ matrix.features }}
+
+      - name: Package release
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          TARGET="${{ matrix.target }}"
+          STAGING="webylib-${VERSION}-${TARGET}"
+          mkdir -p "$STAGING"
+          cp LICENSE README.md CHANGELOG.md "$STAGING/"
+
+          if [ "${{ matrix.lib_only }}" = "true" ]; then
+            # Library-only targets: include .a / .so / .dylib
+            find "target/${TARGET}/release" -maxdepth 1 \
+              \( -name '*.a' -o -name '*.so' -o -name '*.dylib' -o -name '*.dll' -o -name '*.lib' \) \
+              -exec cp {} "$STAGING/" \;
+          else
+            # Desktop targets: include binary + libraries
+            if [ "${{ runner.os }}" = "Windows" ]; then
+              cp "target/${TARGET}/release/webyc.exe" "$STAGING/"
+            else
+              cp "target/${TARGET}/release/webyc" "$STAGING/" 2>/dev/null || true
+            fi
+            find "target/${TARGET}/release" -maxdepth 1 \
+              \( -name '*.a' -o -name '*.so' -o -name '*.dylib' -o -name '*.dll' -o -name '*.lib' \) \
+              -exec cp {} "$STAGING/" \;
+          fi
+
+          tar czf "${STAGING}.tar.gz" "$STAGING"
+          shasum -a 256 "${STAGING}.tar.gz" > "${STAGING}.tar.gz.sha256"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            webylib-*.tar.gz
+            webylib-*.tar.gz.sha256
+
+  # ── Publish to crates.io ─────────────────────────────────────────
+  publish-crate:
+    name: Publish to crates.io
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, msrv]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.70
-      - run: cargo build
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo publish --no-default-features --features bundled-sqlite
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

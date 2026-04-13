@@ -3,8 +3,8 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::str::FromStr;
-use webylib::{Wallet, SecretWebcash, Amount};
 use webylib::biometric::EncryptedData;
+use webylib::{Amount, SecretWebcash, Wallet};
 
 #[derive(Parser)]
 #[command(name = "webyc")]
@@ -112,7 +112,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Setup { master_secret, biometric } => {
+        Commands::Setup {
+            master_secret,
+            biometric,
+        } => {
             println!("Setting up new wallet at: {}", cli.wallet.display());
 
             // Generate or use provided master secret (now optional - wallet auto-generates)
@@ -139,7 +142,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if explicit_master_secret {
                         match wallet.store_master_secret(&master_secret_hex).await {
                             Ok(()) => {
-                                println!("✅ Wallet created successfully with provided master secret!");
+                                println!(
+                                    "✅ Wallet created successfully with provided master secret!"
+                                );
                             }
                             Err(e) => {
                                 eprintln!("❌ Failed to store master secret: {}", e);
@@ -147,15 +152,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     } else {
-                        println!("✅ Wallet created successfully with auto-generated master secret!");
+                        println!(
+                            "✅ Wallet created successfully with auto-generated master secret!"
+                        );
                     }
-                    
+
                     let stats = wallet.stats().await?;
                     println!("📊 Wallet statistics:");
                     println!("  Total webcash: {}", stats.total_webcash);
                     println!("  Unspent webcash: {}", stats.unspent_webcash);
                     println!("  Balance: {}", stats.total_balance);
-                    println!("  Biometric encryption: {}", if wallet.is_biometric_enabled() { "Enabled" } else { "Disabled" });
+                    println!(
+                        "  Biometric encryption: {}",
+                        if wallet.is_biometric_enabled() {
+                            "Enabled"
+                        } else {
+                            "Disabled"
+                        }
+                    );
                 }
                 Err(e) => {
                     eprintln!("❌ Failed to create wallet: {}", e);
@@ -188,12 +202,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Err(e) => {
                     eprintln!("❌ Failed to open wallet: {}", e);
-                    eprintln!("💡 Try running 'webyc --wallet {} setup' to create a new wallet", cli.wallet.display());
+                    eprintln!(
+                        "💡 Try running 'webyc --wallet {} setup' to create a new wallet",
+                        cli.wallet.display()
+                    );
                     std::process::exit(1);
                 }
             }
         }
-        Commands::Insert { webcash, memo, offline } => {
+        Commands::Insert {
+            webcash,
+            memo,
+            offline,
+        } => {
             println!("Inserting webcash into wallet: {}", cli.wallet.display());
             if let Some(memo) = memo {
                 println!("Memo: {}", memo);
@@ -227,9 +248,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Match Python: insert does NOT validate before replace by default
                     // Only validate if explicitly requested (not the default behavior)
                     let validate_with_server = false; // Python doesn't validate before replace
-                    match wallet.insert_with_validation(secret_webcash.clone(), validate_with_server).await {
+                    match wallet
+                        .insert_with_validation(secret_webcash.clone(), validate_with_server)
+                        .await
+                    {
                         Ok(()) => {
-                            println!("✅ Successfully inserted webcash: {}", secret_webcash.amount);
+                            println!(
+                                "✅ Successfully inserted webcash: {}",
+                                secret_webcash.amount
+                            );
                             let new_balance = wallet.balance().await?;
                             println!("📊 New balance: {} WEBCASH", new_balance);
                         }
@@ -247,7 +274,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Pay { amount, memo } => {
             let memo_str = memo.as_deref().unwrap_or("Payment");
-            println!("Generating payment webcash for amount: {} with memo: '{}' from wallet: {}", amount, memo_str, cli.wallet.display());
+            println!(
+                "Generating payment webcash for amount: {} with memo: '{}' from wallet: {}",
+                amount,
+                memo_str,
+                cli.wallet.display()
+            );
 
             // Parse the amount
             let payment_amount = match Amount::from_str(&amount) {
@@ -259,19 +291,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             match Wallet::open_with_biometric(&cli.wallet, cli.biometric).await {
-                Ok(wallet) => {
-                    match wallet.pay(payment_amount, memo_str).await {
-                        Ok(message) => {
-                            println!("✅ {}", message);
-                            let new_balance = wallet.balance().await.unwrap_or_else(|_| "unknown".to_string());
-                            println!("📊 New balance: {} WEBCASH", new_balance);
-                        }
-                        Err(e) => {
-                            eprintln!("❌ Payment generation failed: {}", e);
-                            std::process::exit(1);
-                        }
+                Ok(wallet) => match wallet.pay(payment_amount, memo_str).await {
+                    Ok(message) => {
+                        println!("✅ {}", message);
+                        let new_balance = wallet
+                            .balance()
+                            .await
+                            .unwrap_or_else(|_| "unknown".to_string());
+                        println!("📊 New balance: {} WEBCASH", new_balance);
                     }
-                }
+                    Err(e) => {
+                        eprintln!("❌ Payment generation failed: {}", e);
+                        std::process::exit(1);
+                    }
+                },
                 Err(e) => {
                     eprintln!("❌ Failed to open wallet: {}", e);
                     std::process::exit(1);
@@ -281,17 +314,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Check => {
             println!("Checking wallet against server: {}", cli.wallet.display());
             match Wallet::open_with_biometric(&cli.wallet, cli.biometric).await {
-                Ok(wallet) => {
-                    match wallet.check().await {
-                        Ok(()) => {
-                            println!("✅ Wallet check completed successfully");
-                        }
-                        Err(e) => {
-                            eprintln!("❌ Wallet check failed: {}", e);
-                            std::process::exit(1);
-                        }
+                Ok(wallet) => match wallet.check().await {
+                    Ok(result) => {
+                        println!("✅ Wallet check completed successfully");
+                        println!("  Valid: {}", result.valid_count);
+                        println!("  Spent: {}", result.spent_count);
                     }
-                }
+                    Err(e) => {
+                        eprintln!("❌ Wallet check failed: {}", e);
+                        std::process::exit(1);
+                    }
+                },
                 Err(e) => {
                     eprintln!("❌ Failed to open wallet: {}", e);
                     std::process::exit(1);
@@ -299,23 +332,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Recover { gap_limit } => {
-            println!("Recovering wallet with gap limit: {} for wallet: {}", gap_limit, cli.wallet.display());
+            println!(
+                "Recovering wallet with gap limit: {} for wallet: {}",
+                gap_limit,
+                cli.wallet.display()
+            );
 
             match Wallet::open_with_biometric(&cli.wallet, cli.biometric).await {
-                Ok(wallet) => {
-                    match wallet.recover_from_wallet(gap_limit).await {
-                        Ok(summary) => {
-                            println!("✅ Recovery completed successfully");
-                            println!("{}", summary);
-                        }
-                        Err(e) => {
-                            eprintln!("❌ Recovery failed: {}", e);
-                            eprintln!("💡 Try: webyc setup -p <master_secret>  # Create wallet with master secret");
-                            eprintln!("💡 Or:   webyc recover <master_secret>   # Recover from external master secret");
-                            std::process::exit(1);
-                        }
+                Ok(wallet) => match wallet.recover_from_wallet(gap_limit).await {
+                    Ok(summary) => {
+                        println!("✅ Recovery completed successfully");
+                        println!("{}", summary);
                     }
-                }
+                    Err(e) => {
+                        eprintln!("❌ Recovery failed: {}", e);
+                        eprintln!("💡 Try: webyc setup -p <master_secret>  # Create wallet with master secret");
+                        eprintln!("💡 Or:   webyc recover <master_secret>   # Recover from external master secret");
+                        std::process::exit(1);
+                    }
+                },
                 Err(e) => {
                     eprintln!("❌ Failed to open wallet: {}", e);
                     std::process::exit(1);
@@ -323,24 +358,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Merge { group, max, memo } => {
-            println!("Merging outputs (group: {}, max: {}) for wallet: {}", group, max, cli.wallet.display());
+            println!(
+                "Merging outputs (group: {}, max: {}) for wallet: {}",
+                group,
+                max,
+                cli.wallet.display()
+            );
             if let Some(memo) = memo {
                 println!("Memo: {}", memo);
             }
 
             match Wallet::open_with_biometric(&cli.wallet, cli.biometric).await {
-                Ok(wallet) => {
-                    match wallet.merge(group).await {
-                        Ok(summary) => {
-                            println!("✅ Merge completed successfully");
-                            println!("{}", summary);
-                        }
-                        Err(e) => {
-                            eprintln!("❌ Merge failed: {}", e);
-                            std::process::exit(1);
-                        }
+                Ok(wallet) => match wallet.merge(group).await {
+                    Ok(summary) => {
+                        println!("✅ Merge completed successfully");
+                        println!("{}", summary);
                     }
-                }
+                    Err(e) => {
+                        eprintln!("❌ Merge failed: {}", e);
+                        std::process::exit(1);
+                    }
+                },
                 Err(e) => {
                     eprintln!("❌ Failed to open wallet: {}", e);
                     std::process::exit(1);
@@ -348,17 +386,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Encrypt { output, password } => {
-            println!("Encrypting wallet: {} to: {}", cli.wallet.display(), output.display());
-            
+            println!(
+                "Encrypting wallet: {} to: {}",
+                cli.wallet.display(),
+                output.display()
+            );
+
             if password {
                 println!("🔐 Password-based encryption");
-                
+
                 // Get password from user
                 print!("Enter encryption password: ");
                 use std::io::Write;
                 std::io::stdout().flush().unwrap();
                 let password = rpassword::read_password().unwrap();
-                
+
                 match Wallet::open_with_biometric(&cli.wallet, cli.biometric).await {
                     Ok(wallet) => {
                         match wallet.encrypt_with_password(&password).await {
@@ -366,9 +408,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 // Write encrypted data to file
                                 let data = serde_json::to_vec_pretty(&encrypted_data)?;
                                 std::fs::write(&output, data)?;
-                                println!("✅ Wallet encrypted with password and saved to: {}", output.display());
+                                println!(
+                                    "✅ Wallet encrypted with password and saved to: {}",
+                                    output.display()
+                                );
                                 println!("🔒 Encryption algorithm: {}", encrypted_data.algorithm);
-                                println!("📅 Encrypted at: {}", encrypted_data.metadata.encrypted_at);
+                                println!(
+                                    "📅 Encrypted at: {}",
+                                    encrypted_data.metadata.encrypted_at
+                                );
                             }
                             Err(e) => {
                                 eprintln!("❌ Encryption failed: {}", e);
@@ -383,7 +431,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             } else {
                 println!("🔐 Biometric encryption (Face ID/Touch ID)");
-                
+
                 match Wallet::open_with_biometric(&cli.wallet, true).await {
                     Ok(wallet) => {
                         match wallet.encrypt_with_biometrics().await {
@@ -391,13 +439,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 // Write encrypted data to file
                                 let data = serde_json::to_vec_pretty(&encrypted_data)?;
                                 std::fs::write(&output, data)?;
-                                println!("✅ Wallet encrypted with biometrics and saved to: {}", output.display());
+                                println!(
+                                    "✅ Wallet encrypted with biometrics and saved to: {}",
+                                    output.display()
+                                );
                                 println!("🔒 Encryption algorithm: {}", encrypted_data.algorithm);
                                 println!("📱 Platform: {}", encrypted_data.metadata.platform);
                                 if let Some(bio_type) = &encrypted_data.metadata.biometric_type {
                                     println!("👤 Biometric type: {}", bio_type);
                                 }
-                                println!("📅 Encrypted at: {}", encrypted_data.metadata.encrypted_at);
+                                println!(
+                                    "📅 Encrypted at: {}",
+                                    encrypted_data.metadata.encrypted_at
+                                );
                             }
                             Err(e) => {
                                 eprintln!("❌ Biometric encryption failed: {}", e);
@@ -415,8 +469,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Decrypt { input, password } => {
-            println!("Decrypting wallet from: {} to: {}", input.display(), cli.wallet.display());
-            
+            println!(
+                "Decrypting wallet from: {} to: {}",
+                input.display(),
+                cli.wallet.display()
+            );
+
             // Read encrypted data from file
             let data = match std::fs::read(&input) {
                 Ok(data) => data,
@@ -425,7 +483,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     std::process::exit(1);
                 }
             };
-            
+
             let encrypted_data: EncryptedData = match serde_json::from_slice(&data) {
                 Ok(data) => data,
                 Err(e) => {
@@ -433,7 +491,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     std::process::exit(1);
                 }
             };
-            
+
             println!("🔍 Encrypted file info:");
             println!("  Algorithm: {}", encrypted_data.algorithm);
             println!("  Platform: {}", encrypted_data.metadata.platform);
@@ -441,21 +499,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(bio_type) = &encrypted_data.metadata.biometric_type {
                 println!("  Biometric type: {}", bio_type);
             }
-            
+
             if password || encrypted_data.algorithm.contains("PASSWORD") {
                 println!("🔐 Password-based decryption");
-                
+
                 // Get password from user
                 print!("Enter decryption password: ");
                 use std::io::Write;
                 std::io::stdout().flush().unwrap();
                 let password = rpassword::read_password().unwrap();
-                
+
                 match Wallet::open_with_biometric(&cli.wallet, cli.biometric).await {
                     Ok(wallet) => {
-                        match wallet.decrypt_with_password(&encrypted_data, &password).await {
+                        match wallet
+                            .decrypt_with_password(&encrypted_data, &password)
+                            .await
+                        {
                             Ok(()) => {
-                                println!("✅ Wallet decrypted successfully from: {}", input.display());
+                                println!(
+                                    "✅ Wallet decrypted successfully from: {}",
+                                    input.display()
+                                );
                                 let balance = wallet.balance().await?;
                                 println!("💰 Restored wallet balance: {} WEBCASH", balance);
                             }
@@ -473,22 +537,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             } else {
                 println!("🔐 Biometric decryption (Face ID/Touch ID)");
-                
+
                 match Wallet::open_with_biometric(&cli.wallet, true).await {
-                    Ok(wallet) => {
-                        match wallet.decrypt_with_biometrics(&encrypted_data).await {
-                            Ok(()) => {
-                                println!("✅ Wallet decrypted successfully with biometrics from: {}", input.display());
-                                let balance = wallet.balance().await?;
-                                println!("💰 Restored wallet balance: {} WEBCASH", balance);
-                            }
-                            Err(e) => {
-                                eprintln!("❌ Biometric decryption failed: {}", e);
-                                eprintln!("💡 Try using --password if biometric authentication is not available");
-                                std::process::exit(1);
-                            }
+                    Ok(wallet) => match wallet.decrypt_with_biometrics(&encrypted_data).await {
+                        Ok(()) => {
+                            println!(
+                                "✅ Wallet decrypted successfully with biometrics from: {}",
+                                input.display()
+                            );
+                            let balance = wallet.balance().await?;
+                            println!("💰 Restored wallet balance: {} WEBCASH", balance);
                         }
-                    }
+                        Err(e) => {
+                            eprintln!("❌ Biometric decryption failed: {}", e);
+                            eprintln!("💡 Try using --password if biometric authentication is not available");
+                            std::process::exit(1);
+                        }
+                    },
                     Err(e) => {
                         eprintln!("❌ Failed to open wallet with biometric encryption: {}", e);
                         eprintln!("💡 Try using --password for password-based decryption");
@@ -499,22 +564,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::EncryptDb { password } => {
             println!("🔐 Encrypting wallet database: {}", cli.wallet.display());
-            
+
             if password {
                 println!("🔑 Password-based encryption");
-                
+
                 // Get password from user
                 print!("Enter encryption password: ");
                 use std::io::Write;
                 std::io::stdout().flush().unwrap();
                 let encryption_password = rpassword::read_password().unwrap();
-                
+
                 // Open normal wallet and encrypt with password
                 match Wallet::open_with_biometric(&cli.wallet, false).await {
                     Ok(wallet) => {
-                        match wallet.encrypt_database_with_password(&encryption_password).await {
+                        match wallet
+                            .encrypt_database_with_password(&encryption_password)
+                            .await
+                        {
                             Ok(()) => {
-                                println!("✅ Wallet database encrypted successfully with password!");
+                                println!(
+                                    "✅ Wallet database encrypted successfully with password!"
+                                );
                                 println!("🔒 Use the same password to decrypt the database");
                             }
                             Err(e) => {
@@ -530,24 +600,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             } else {
                 println!("🔐 Biometric encryption (Face ID/Touch ID)");
-                
+
                 // Open wallet with biometric encryption enabled
                 match Wallet::open_with_biometric(&cli.wallet, true).await {
-                    Ok(wallet) => {
-                        match wallet.encrypt_database().await {
-                            Ok(()) => {
-                                println!("✅ Wallet database encrypted successfully!");
-                                println!("🔒 The database file is now encrypted and can only be opened with biometric authentication");
-                            }
-                            Err(e) => {
-                                eprintln!("❌ Failed to encrypt database: {}", e);
-                                std::process::exit(1);
-                            }
+                    Ok(wallet) => match wallet.encrypt_database().await {
+                        Ok(()) => {
+                            println!("✅ Wallet database encrypted successfully!");
+                            println!("🔒 The database file is now encrypted and can only be opened with biometric authentication");
                         }
-                    }
+                        Err(e) => {
+                            eprintln!("❌ Failed to encrypt database: {}", e);
+                            std::process::exit(1);
+                        }
+                    },
                     Err(e) => {
                         eprintln!("❌ Failed to open wallet for encryption: {}", e);
-                        eprintln!("💡 Make sure the wallet exists and biometric features are available");
+                        eprintln!(
+                            "💡 Make sure the wallet exists and biometric features are available"
+                        );
                         std::process::exit(1);
                     }
                 }
@@ -555,21 +625,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::DecryptDb { password } => {
             println!("🔓 Decrypting wallet database: {}", cli.wallet.display());
-            
+
             if password {
                 println!("🔑 Password-based decryption");
-                
+
                 // Get password from user
                 print!("Enter decryption password: ");
                 use std::io::Write;
                 std::io::stdout().flush().unwrap();
                 let decryption_password = rpassword::read_password().unwrap();
-                
+
                 // Decrypt database with password (no need to open wallet first)
-                let dummy_wallet = Wallet::open_with_biometric(&cli.wallet, false).await
+                let dummy_wallet = Wallet::open_with_biometric(&cli.wallet, false)
+                    .await
                     .map_err(|_| "Cannot access encrypted database without correct method")?;
-                
-                match dummy_wallet.decrypt_database_with_password(&decryption_password).await {
+
+                match dummy_wallet
+                    .decrypt_database_with_password(&decryption_password)
+                    .await
+                {
                     Ok(()) => {
                         println!("✅ Wallet database decrypted successfully with password!");
                         println!("🔓 Database is now accessible as normal SQLite file");
@@ -582,23 +656,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             } else {
                 println!("🔐 Biometric decryption (Face ID/Touch ID)");
-                
+
                 // Open wallet with biometric encryption
                 match Wallet::open_with_biometric(&cli.wallet, true).await {
-                    Ok(wallet) => {
-                        match wallet.decrypt_database().await {
-                            Ok(()) => {
-                                println!("✅ Wallet database decrypted and ready for use!");
-                                println!("🔓 You can now perform transactions with this wallet");
-                                let balance = wallet.balance().await?;
-                                println!("💰 Current balance: {} WEBCASH", balance);
-                            }
-                            Err(e) => {
-                                eprintln!("❌ Failed to decrypt database: {}", e);
-                                std::process::exit(1);
-                            }
+                    Ok(wallet) => match wallet.decrypt_database().await {
+                        Ok(()) => {
+                            println!("✅ Wallet database decrypted and ready for use!");
+                            println!("🔓 You can now perform transactions with this wallet");
+                            let balance = wallet.balance().await?;
+                            println!("💰 Current balance: {} WEBCASH", balance);
                         }
-                    }
+                        Err(e) => {
+                            eprintln!("❌ Failed to decrypt database: {}", e);
+                            std::process::exit(1);
+                        }
+                    },
                     Err(e) => {
                         eprintln!("❌ Failed to open encrypted wallet: {}", e);
                         eprintln!("💡 Make sure the database is encrypted and biometric authentication is available");

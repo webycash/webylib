@@ -152,7 +152,6 @@ impl SecretWebcash {
         // Use decimal format (Display trait formats as decimal)
         format!("e{}:secret:{}", self.amount, secret_str)
     }
-
 }
 
 impl fmt::Display for SecretWebcash {
@@ -214,8 +213,8 @@ impl PublicWebcash {
             return Err(Error::parse("Hash must be 64 hex characters (32 bytes)"));
         }
 
-        let hash_bytes = hex::decode(hash_str)
-            .map_err(|_| Error::parse("Hash must be valid hex"))?;
+        let hash_bytes =
+            hex::decode(hash_str).map_err(|_| Error::parse("Hash must be valid hex"))?;
 
         let mut hash = [0u8; 32];
         hash.copy_from_slice(&hash_bytes);
@@ -256,4 +255,3 @@ impl From<&SecretWebcash> for PublicWebcash {
         secret.to_public()
     }
 }
-

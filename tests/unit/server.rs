@@ -29,8 +29,14 @@ fn test_server_config_custom() {
 fn test_request_response_structures() {
     // Test ReplaceRequest serialization
     let request = ReplaceRequest {
-        webcashes: vec!["e1.00000000:secret:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890".to_string()],
-        new_webcashes: vec!["e0.50000000:secret:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string()],
+        webcashes: vec![
+            "e1.00000000:secret:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                .to_string(),
+        ],
+        new_webcashes: vec![
+            "e0.50000000:secret:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                .to_string(),
+        ],
         legalese: Legalese { terms: true },
     };
 
@@ -63,7 +69,7 @@ fn test_response_deserialization() {
             }
         }
     }"#;
-    
+
     let health_response: HealthResponse = serde_json::from_str(health_json).unwrap();
     assert_eq!(health_response.status, "success");
     assert_eq!(health_response.results.len(), 1);
@@ -98,16 +104,28 @@ fn test_response_deserialization() {
 #[test]
 fn test_public_webcash_conversion() {
     // Test that PublicWebcash can be converted to string format for API requests
-    let webcash = PublicWebcash::parse("e1.00000000:public:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890").unwrap();
+    let webcash = PublicWebcash::parse(
+        "e1.00000000:public:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+    )
+    .unwrap();
     let webcash_str = format!("{}", webcash);
 
     // Verify the string format is correct
-    assert_eq!(webcash_str, "e1:public:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
+    assert_eq!(
+        webcash_str,
+        "e1:public:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+    );
 
     // Test with multiple webcash entries
     let webcash_list = vec![
-        PublicWebcash::parse("e1.00000000:public:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890").unwrap(),
-        PublicWebcash::parse("e2.50000000:public:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef").unwrap(),
+        PublicWebcash::parse(
+            "e1.00000000:public:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        )
+        .unwrap(),
+        PublicWebcash::parse(
+            "e2.50000000:public:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+        )
+        .unwrap(),
     ];
 
     let string_list: Vec<String> = webcash_list.iter().map(|wc| format!("{}", wc)).collect();

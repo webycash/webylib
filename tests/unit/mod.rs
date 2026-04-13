@@ -8,6 +8,5 @@ mod error;
 mod hd;
 mod lib;
 mod server;
-mod server_ios;
 mod wallet;
 mod webcash;

@@ -1,13 +1,13 @@
 //! Cryptographic utilities for Webcash
 //!
 //! This module provides cryptographic functions used throughout the Webcash system,
-//! including SHA256 hashing, HMAC-SHA512, secure random number generation, and 
+//! including SHA256 hashing, HMAC-SHA512, secure random number generation, and
 //! biometric encryption capabilities.
 
-use sha2::{Digest, Sha256, Sha512};
 use hmac::{Hmac, Mac};
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use sha2::{Digest, Sha256, Sha512};
 use std::fmt;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Compute SHA256 hash of data
 pub fn sha256(data: &[u8]) -> [u8; 32] {
@@ -37,7 +37,7 @@ pub struct CryptoSecret([u8; 32]);
 
 impl CryptoSecret {
     /// Generate a new cryptographically secure 32-byte secret using platform RNG
-    /// 
+    ///
     /// This uses getrandom which interfaces with:
     /// - iOS: SecRandomCopyBytes (Secure Enclave hardware RNG)
     /// - Android: /dev/urandom (hardware RNG pool)
@@ -48,12 +48,12 @@ impl CryptoSecret {
             .map_err(|e| CryptoError::RandomGeneration(format!("{}", e)))?;
         Ok(CryptoSecret(bytes))
     }
-    
+
     /// Create from existing bytes (use carefully - prefer generate())
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
         CryptoSecret(bytes)
     }
-    
+
     /// Create from hex string
     pub fn from_hex(hex_str: &str) -> Result<Self, CryptoError> {
         let bytes = hex::decode(hex_str).map_err(|_| CryptoError::InvalidHex)?;
@@ -64,22 +64,22 @@ impl CryptoSecret {
         array.copy_from_slice(&bytes);
         Ok(CryptoSecret(array))
     }
-    
+
     /// Get reference to the secret bytes
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
-    
+
     /// Convert to array (consumes self)
     pub fn into_bytes(self) -> [u8; 32] {
         self.0
     }
-    
+
     /// Convert to hex string
     pub fn to_hex(&self) -> String {
         hex::encode(&self.0)
     }
-    
+
     /// Get the raw key bytes (for compatibility with encryption libraries)
     pub fn as_key_bytes(&self) -> &[u8; 32] {
         &self.0
@@ -88,8 +88,7 @@ impl CryptoSecret {
     /// Create an AES-256-GCM cipher from this secret
     pub fn create_cipher(&self) -> aes_gcm::Aes256Gcm {
         use aes_gcm::{Aes256Gcm, KeyInit};
-        Aes256Gcm::new_from_slice(&self.0)
-            .expect("32-byte key is valid for AES-256-GCM")
+        Aes256Gcm::new_from_slice(&self.0).expect("32-byte key is valid for AES-256-GCM")
     }
 }
 
@@ -111,19 +110,19 @@ impl fmt::Display for CryptoSecret {
 pub enum CryptoError {
     #[error("Failed to generate random bytes: {0}")]
     RandomGeneration(String),
-    
+
     #[error("Invalid hex string format")]
     InvalidHex,
-    
+
     #[error("Invalid secret length - must be 32 bytes")]
     InvalidLength,
-    
+
     #[error("Encryption failed: {0}")]
     EncryptionFailed(String),
-    
+
     #[error("Decryption failed: {0}")]
     DecryptionFailed(String),
-    
+
     #[error("Key derivation failed: {0}")]
     KeyDerivationFailed(String),
 }

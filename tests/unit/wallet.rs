@@ -1,5 +1,5 @@
-use webylib::{Wallet, Amount, Result};
 use tempfile::NamedTempFile;
+use webylib::{Amount, Result, Wallet};
 
 async fn create_test_wallet() -> Result<Wallet> {
     let temp_file = NamedTempFile::new().unwrap();

@@ -42,11 +42,11 @@
 
 use crate::crypto::CryptoSecret;
 use crate::error::{Error, Result};
-use aes_gcm::aead::{Aead, generic_array::GenericArray};
+use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use hkdf::Hkdf;
+use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use zeroize::Zeroize;
-use serde::{Deserialize, Serialize};
 
 /// Configuration for biometric encryption
 #[derive(Debug, Clone)]
@@ -146,7 +146,7 @@ impl BiometricEncryption {
     }
 
     /// Encrypt data with biometric protection
-    /// 
+    ///
     /// This method:
     /// 1. Generates or retrieves a biometric-protected key
     /// 2. Derives encryption key using HKDF
@@ -178,7 +178,13 @@ impl BiometricEncryption {
 
         // Create metadata
         let metadata = EncryptionMetadata {
-            encrypted_at: format!("{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()),
+            encrypted_at: format!(
+                "{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+            ),
             platform: self.get_platform_name(),
             version: "1.0".to_string(),
             biometric_type: self.get_available_biometric_type().await,
@@ -195,13 +201,16 @@ impl BiometricEncryption {
     }
 
     /// Decrypt data using biometric authentication
-    /// 
+    ///
     /// This method:
     /// 1. Triggers biometric authentication
     /// 2. Retrieves the biometric-protected key
     /// 3. Derives decryption key using stored parameters
     /// 4. Decrypts and returns the original data
-    pub async fn decrypt_with_biometrics(&mut self, encrypted_data: &EncryptedData) -> Result<Vec<u8>> {
+    pub async fn decrypt_with_biometrics(
+        &mut self,
+        encrypted_data: &EncryptedData,
+    ) -> Result<Vec<u8>> {
         // Validate encryption format
         if encrypted_data.algorithm != "AES-256-GCM" {
             return Err(Error::crypto("Unsupported encryption algorithm"));
@@ -283,7 +292,7 @@ impl BiometricEncryption {
                 // No existing key, create new one
                 let key = CryptoSecret::generate()
                     .map_err(|e| Error::crypto(&format!("Failed to generate master key: {}", e)))?;
-                
+
                 self.store_biometric_key(&key).await?;
                 self.cached_key = Some(key.clone());
                 Ok(key)
@@ -311,12 +320,16 @@ impl BiometricEncryption {
     }
 
     /// Derive encryption key from master key using HKDF
-    fn derive_encryption_key(&self, master_key: &CryptoSecret, salt: &[u8; 32]) -> Result<CryptoSecret> {
+    fn derive_encryption_key(
+        &self,
+        master_key: &CryptoSecret,
+        salt: &[u8; 32],
+    ) -> Result<CryptoSecret> {
         let hk = Hkdf::<Sha256>::new(Some(salt), master_key.as_bytes());
         let mut okm = [0u8; 32];
         hk.expand(b"webycash-biometric-v1", &mut okm)
             .map_err(|e| Error::crypto(&format!("Key derivation failed: {}", e)))?;
-        
+
         Ok(CryptoSecret::from_bytes(okm))
     }
 
@@ -331,7 +344,7 @@ impl BiometricEncryption {
     }
 
     // Platform-specific implementations
-    
+
     #[cfg(target_os = "ios")]
     async fn is_biometric_available_ios(&self) -> Result<bool> {
         // iOS-specific implementation would go here
@@ -378,13 +391,17 @@ impl BiometricEncryption {
     #[cfg(target_os = "android")]
     async fn store_biometric_key(&self, _key: &CryptoSecret) -> Result<()> {
         // Android Keystore implementation would go here
-        Err(Error::crypto("Android biometric storage not yet implemented"))
+        Err(Error::crypto(
+            "Android biometric storage not yet implemented",
+        ))
     }
 
     #[cfg(target_os = "android")]
     async fn retrieve_biometric_key(&self) -> Result<CryptoSecret> {
         // Android Keystore retrieval would go here
-        Err(Error::crypto("Android biometric retrieval not yet implemented"))
+        Err(Error::crypto(
+            "Android biometric retrieval not yet implemented",
+        ))
     }
 
     #[cfg(target_os = "android")]
@@ -396,12 +413,16 @@ impl BiometricEncryption {
     // Fallback implementations for other platforms
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
     async fn store_biometric_key(&self, _key: &CryptoSecret) -> Result<()> {
-        Err(Error::crypto("Biometric storage not supported on this platform"))
+        Err(Error::crypto(
+            "Biometric storage not supported on this platform",
+        ))
     }
 
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
     async fn retrieve_biometric_key(&self) -> Result<CryptoSecret> {
-        Err(Error::crypto("Biometric storage not supported on this platform"))
+        Err(Error::crypto(
+            "Biometric storage not supported on this platform",
+        ))
     }
 
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
@@ -428,11 +449,7 @@ pub fn encrypt_with_password(plaintext: &[u8], password: &str) -> Result<Encrypt
     // Derive key using Argon2 (more secure than PBKDF2)
     let mut key_bytes = [0u8; 32];
     argon2::Argon2::default()
-        .hash_password_into(
-            password.as_bytes(),
-            &salt,
-            &mut key_bytes,
-        )
+        .hash_password_into(password.as_bytes(), &salt, &mut key_bytes)
         .map_err(|e| Error::crypto(&format!("Password key derivation failed: {}", e)))?;
 
     let encryption_key = CryptoSecret::from_bytes(key_bytes);
@@ -449,7 +466,13 @@ pub fn encrypt_with_password(plaintext: &[u8], password: &str) -> Result<Encrypt
         .map_err(|e| Error::crypto(&format!("Password encryption failed: {}", e)))?;
 
     let metadata = EncryptionMetadata {
-        encrypted_at: format!("{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()),
+        encrypted_at: format!(
+            "{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+        ),
         platform: "password".to_string(),
         version: "1.0".to_string(),
         biometric_type: None,
@@ -479,11 +502,7 @@ pub fn decrypt_with_password(encrypted_data: &EncryptedData, password: &str) -> 
     // Derive key using same parameters
     let mut key_bytes = [0u8; 32];
     argon2::Argon2::default()
-        .hash_password_into(
-            password.as_bytes(),
-            &encrypted_data.salt,
-            &mut key_bytes,
-        )
+        .hash_password_into(password.as_bytes(), &encrypted_data.salt, &mut key_bytes)
         .map_err(|e| Error::crypto(&format!("Password key derivation failed: {}", e)))?;
 
     let decryption_key = CryptoSecret::from_bytes(key_bytes);
@@ -510,7 +529,7 @@ mod tests {
 
         // Encrypt
         let encrypted = encrypt_with_password(plaintext, password).unwrap();
-        
+
         // Verify structure
         assert_eq!(encrypted.algorithm, "AES-256-GCM-PASSWORD");
         assert_eq!(encrypted.nonce.len(), 12);
@@ -535,11 +554,11 @@ mod tests {
     #[test]
     fn test_crypto_secret_security() {
         let secret = CryptoSecret::generate().unwrap();
-        
+
         // Debug should not reveal secret
         let debug_str = format!("{:?}", secret);
         assert_eq!(debug_str, "CryptoSecret([REDACTED])");
-        
+
         // Display should not reveal secret
         let display_str = format!("{}", secret);
         assert_eq!(display_str, "[REDACTED 32-byte secret]");

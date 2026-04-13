@@ -49,10 +49,12 @@ impl Amount {
         if parts.len() != 2 {
             return Err(Error::amount("invalid scientific notation format"));
         }
-        
-        let coefficient: f64 = parts[0].parse()
+
+        let coefficient: f64 = parts[0]
+            .parse()
             .map_err(|_| Error::amount("invalid coefficient in scientific notation"))?;
-        let exponent: i32 = parts[1].parse()
+        let exponent: i32 = parts[1]
+            .parse()
             .map_err(|_| Error::amount("invalid exponent in scientific notation"))?;
 
         let result = if exponent >= 0 {
@@ -62,7 +64,7 @@ impl Amount {
             // Negative exponent: divide by 10^|exponent|
             coefficient / 10_f64.powi(-exponent)
         };
-        
+
         Self::from_webcash(result)
     }
 
@@ -166,12 +168,16 @@ impl Amount {
 
     /// Checked addition
     pub fn checked_add(&self, other: &Amount) -> Option<Amount> {
-        self.wats.checked_add(other.wats).map(|wats| Amount { wats })
+        self.wats
+            .checked_add(other.wats)
+            .map(|wats| Amount { wats })
     }
 
     /// Checked subtraction
     pub fn checked_sub(&self, other: &Amount) -> Option<Amount> {
-        self.wats.checked_sub(other.wats).map(|wats| Amount { wats })
+        self.wats
+            .checked_sub(other.wats)
+            .map(|wats| Amount { wats })
     }
 
     /// Checked multiplication
@@ -243,7 +249,9 @@ impl FromStr for Amount {
         let mut wats = if integer_part.is_empty() {
             0
         } else {
-            integer_part.parse::<i64>().map_err(|_| Error::amount("invalid integer part"))?
+            integer_part
+                .parse::<i64>()
+                .map_err(|_| Error::amount("invalid integer part"))?
         };
 
         // Handle fractional part
@@ -253,18 +261,23 @@ impl FromStr for Amount {
             }
 
             // Parse fractional part
-            let frac_value = fractional_part.parse::<i64>().map_err(|_| Error::amount("invalid fractional part"))?;
+            let frac_value = fractional_part
+                .parse::<i64>()
+                .map_err(|_| Error::amount("invalid fractional part"))?;
 
             // Calculate the multiplier for the fractional part
             let multiplier = 10_i64.pow(Amount::DECIMALS - fractional_part.len() as u32);
             let fractional_sats = frac_value * multiplier;
 
             // Add fractional part to wats
-            wats = wats.checked_mul(Amount::UNIT).and_then(|s| s.checked_add(fractional_sats))
+            wats = wats
+                .checked_mul(Amount::UNIT)
+                .and_then(|s| s.checked_add(fractional_sats))
                 .ok_or_else(|| Error::amount("amount too large"))?;
         } else {
             // No fractional part, multiply by UNIT
-            wats = wats.checked_mul(Amount::UNIT)
+            wats = wats
+                .checked_mul(Amount::UNIT)
                 .ok_or_else(|| Error::amount("amount too large"))?;
         }
 
@@ -311,7 +324,7 @@ impl std::ops::Div<i64> for Amount {
     type Output = Amount;
 
     /// Division operator for Amount
-    /// 
+    ///
     /// # Panics
     /// Panics if divisor is zero, following Rust's standard integer division behavior
     fn div(self, rhs: i64) -> Amount {
@@ -332,4 +345,3 @@ impl std::ops::SubAssign for Amount {
         self.wats = self.wats.saturating_sub(other.wats);
     }
 }
-
