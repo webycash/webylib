@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-04-14
+
+### Changed
+- Production documentation overhaul: clean docs/ with ARCHITECTURE, FFI, PROTOCOL, SECURITY, DEVELOPMENT
+- FFI reference with complete examples for Python, Node.js, C#, Go, Swift, Java, Kotlin
+- README rewritten with ASCII header, platform table, module structure, quick start in Rust/C/CLI
+- CONTRIBUTING rewritten with design principles table and harmoniis-wallet conventions
+- Removed stale docs (ARCHITECTURE_FIXES, IMPLEMENTATION_STATUS, ROADMAP)
+- All license references updated to MIT, all MSRV references updated to 1.85
+- reqwest: `default-features = false` — drops OpenSSL, fixes all cross-compilation
+- Android releases use NDK toolchain directly (no Docker/cross)
+- Linux aarch64 release uses native ARM runner
+
 ## [0.2.0] - 2026-04-13
 
 ### Added
