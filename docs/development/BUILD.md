@@ -329,7 +329,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Webcash Developers"]
 description = "Secure Rust implementation of Webcash"
-license = "MPL-2.0"
+license = "MIT"
 
 [features]
 default = ["server", "wallet"]

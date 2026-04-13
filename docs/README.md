@@ -1,7 +1,7 @@
 # Webcash Rust Implementation - Documentation
 
-[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org/)
 
 This documentation provides comprehensive information about the Webcash Rust implementation.
 
@@ -94,7 +94,7 @@ src/bin/cli.rs     // Command-line interface
 - ✅ **Cryptographic Security**: Proper use of SHA256 and secure random
 
 ### Build Requirements
-- **Rust**: 1.70+ with Cargo
+- **Rust**: 1.85+ with Cargo
 - **SQLite3**: Development libraries
 - **OpenSSL**: Development libraries (for HTTPS)
 - **System Dependencies**: See [BUILD.md](./development/BUILD.md)

@@ -1,7 +1,8 @@
 # Webcash Rust Implementation
 
-[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Crates.io](https://img.shields.io/crates/v/webylib.svg)](https://crates.io/crates/webylib)
+[![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org/)
 
 A Rust implementation of the Webcash electronic cash wallet system.
 
@@ -29,7 +30,7 @@ Webcash is an experimental electronic cash system operated by Webcash LLC. This 
 
 ### Prerequisites
 
-- **Rust**: 1.70+ with Cargo
+- **Rust**: 1.85+ with Cargo
 - **SQLite3**: Development libraries
 - **OpenSSL**: Development libraries (for HTTPS)
 
@@ -151,7 +152,7 @@ cargo build
 
 ## License
 
-This project is licensed under the **Mozilla Public License 2.0** (MPL-2.0), consistent with the original Webcash implementations.
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
 ## Related Projects
 
