@@ -95,9 +95,9 @@ wheels/
 *-shm
 *-wal
 
-# Security: Never commit sensitive wallet data
-wallet/
-wallets/
+# Security: Never commit sensitive wallet data (root-level only, not src/wallet/)
+/wallet/
+/wallets/
 keys/
 secrets/
 .bench_secret
