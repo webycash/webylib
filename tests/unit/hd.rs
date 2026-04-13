@@ -113,7 +113,7 @@ fn test_domain_separation() {
     let change = wallet.derive_secret(ChainCode::Change, 0).unwrap();
     let mining = wallet.derive_secret(ChainCode::Mining, 0).unwrap();
 
-    let secrets = vec![receive, pay, change, mining];
+    let secrets = [receive, pay, change, mining];
     for i in 0..secrets.len() {
         for j in (i + 1)..secrets.len() {
             assert_ne!(

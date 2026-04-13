@@ -34,7 +34,7 @@ fn test_secret_webcash_to_public() {
     assert_eq!(public.amount, secret.amount);
 
     println!("Secret: {}", secret_str);
-    println!("Public webcash: {}", public.to_string());
+    println!("Public webcash: {}", public);
     println!("Hash hex: {}", public.hash_hex());
 }
 

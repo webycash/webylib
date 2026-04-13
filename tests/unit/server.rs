@@ -10,9 +10,8 @@ fn test_server_config_default() {
 
 #[tokio::test]
 async fn test_server_client_creation() {
-    let _client = ServerClient::new().unwrap();
     // Just test that it can be created without panicking
-    assert!(true);
+    let _client = ServerClient::new().unwrap();
 }
 
 #[test]
@@ -117,7 +116,7 @@ fn test_public_webcash_conversion() {
     );
 
     // Test with multiple webcash entries
-    let webcash_list = vec![
+    let webcash_list = [
         PublicWebcash::parse(
             "e1.00000000:public:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
         )

@@ -176,13 +176,13 @@ impl Wallet {
         };
 
         serde_json::to_vec(&wallet_export)
-            .map_err(|e| Error::wallet(&format!("Failed to serialize wallet data: {}", e)))
+            .map_err(|e| Error::wallet(format!("Failed to serialize wallet data: {}", e)))
     }
 
     /// Import wallet data from bytes after decryption.
     pub(crate) async fn import_wallet_data(&self, data: &[u8]) -> Result<()> {
         let wallet_export: WalletExport = serde_json::from_slice(data)
-            .map_err(|e| Error::wallet(&format!("Failed to deserialize wallet data: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Failed to deserialize wallet data: {}", e)))?;
 
         let connection = self
             .connection

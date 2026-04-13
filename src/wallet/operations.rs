@@ -72,7 +72,7 @@ impl Wallet {
             Some(secret) => Ok(secret),
             None => {
                 let master_secret = crate::crypto::CryptoSecret::generate().map_err(|e| {
-                    Error::crypto(&format!("Failed to generate master secret: {}", e))
+                    Error::crypto(format!("Failed to generate master secret: {}", e))
                 })?;
                 let hex = master_secret.to_hex();
                 connection.execute(
@@ -262,7 +262,7 @@ impl Wallet {
 
         let new_secret_hex = hd_wallet
             .derive_secret(crate::hd::ChainCode::Receive, depth)
-            .map_err(|e| Error::crypto(&format!("Failed to generate new secret: {}", e)))?;
+            .map_err(|e| Error::crypto(format!("Failed to generate new secret: {}", e)))?;
 
         let new_webcash = SecretWebcash::new(SecureString::new(new_secret_hex), webcash.amount);
 
@@ -310,7 +310,9 @@ impl Wallet {
                 // Same-lineage token — validate unspent then store directly
                 log::info!("Same-lineage token detected, storing directly without replace");
                 let public_webcash = webcash.to_public();
-                let health_response = server.health_check(&[public_webcash.clone()]).await?;
+                let health_response = server
+                    .health_check(std::slice::from_ref(&public_webcash))
+                    .await?;
                 drop(server);
                 if health_response.status != "success" {
                     return Err(Error::server(
@@ -338,7 +340,9 @@ impl Wallet {
             .lock()
             .map_err(|_| Error::wallet("Failed to acquire server client lock"))?;
         let public_webcash = webcash.to_public();
-        let health = server.health_check(&[public_webcash.clone()]).await?;
+        let health = server
+            .health_check(std::slice::from_ref(&public_webcash))
+            .await?;
 
         if health.status != "success" {
             return Err(Error::server("Server validation failed"));
@@ -349,10 +353,10 @@ impl Wallet {
             }
             if let Some(ref server_amount) = result.amount {
                 let expected = Amount::from_str(server_amount).map_err(|_| {
-                    Error::wallet(&format!("Invalid amount from server: {}", server_amount))
+                    Error::wallet(format!("Invalid amount from server: {}", server_amount))
                 })?;
                 if webcash.amount != expected {
-                    return Err(Error::wallet(&format!(
+                    return Err(Error::wallet(format!(
                         "Amount mismatch: provided {}, server says {}",
                         webcash.amount, expected
                     )));
@@ -422,7 +426,7 @@ impl Wallet {
         // Generate payment output
         let pay_secret = hd_wallet
             .derive_secret(crate::hd::ChainCode::Pay, pay_depth)
-            .map_err(|e| Error::crypto(&format!("Failed to generate payment secret: {}", e)))?;
+            .map_err(|e| Error::crypto(format!("Failed to generate payment secret: {}", e)))?;
         let payment_webcash = SecretWebcash::new(SecureString::new(pay_secret), amount);
         let mut new_webcashes = vec![payment_webcash.to_string()];
 
@@ -430,7 +434,7 @@ impl Wallet {
         let change_webcash = if change_amount > Amount::ZERO {
             let change_secret = hd_wallet
                 .derive_secret(crate::hd::ChainCode::Change, change_depth)
-                .map_err(|e| Error::crypto(&format!("Failed to generate change secret: {}", e)))?;
+                .map_err(|e| Error::crypto(format!("Failed to generate change secret: {}", e)))?;
             let cw = SecretWebcash::new(SecureString::new(change_secret), change_amount);
             new_webcashes.push(cw.to_string());
             Some(cw)
@@ -573,7 +577,7 @@ impl Wallet {
 
         let mut valid_count = 0;
         let mut spent_count = 0;
-        for (_webcash_str, health_result) in &health_response.results {
+        for health_result in health_response.results.values() {
             if let Some(true) = health_result.spent {
                 spent_count += 1;
             } else {

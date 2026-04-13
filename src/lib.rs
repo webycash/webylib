@@ -1,3 +1,4 @@
+#![allow(clippy::await_holding_lock)]
 //! # webylib — Webcash HD Wallet Library
 //!
 //! A secure, production-grade Rust implementation of the Webcash electronic cash protocol.

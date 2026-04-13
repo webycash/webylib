@@ -156,7 +156,7 @@ impl BiometricEncryption {
         // Generate salt for key derivation
         let mut salt = [0u8; 32];
         getrandom::getrandom(&mut salt)
-            .map_err(|e| Error::crypto(&format!("Failed to generate salt: {}", e)))?;
+            .map_err(|e| Error::crypto(format!("Failed to generate salt: {}", e)))?;
 
         // Get or generate master key protected by biometrics
         let master_key = self.get_or_create_biometric_key().await?;
@@ -168,13 +168,13 @@ impl BiometricEncryption {
         let cipher = encryption_key.create_cipher();
         let mut nonce_bytes = [0u8; 12];
         getrandom::getrandom(&mut nonce_bytes)
-            .map_err(|e| Error::crypto(&format!("Failed to generate nonce: {}", e)))?;
+            .map_err(|e| Error::crypto(format!("Failed to generate nonce: {}", e)))?;
         let nonce = GenericArray::from_slice(&nonce_bytes);
 
         // Encrypt the data
         let ciphertext = cipher
-            .encrypt(&nonce, plaintext)
-            .map_err(|e| Error::crypto(&format!("Encryption failed: {}", e)))?;
+            .encrypt(nonce, plaintext)
+            .map_err(|e| Error::crypto(format!("Encryption failed: {}", e)))?;
 
         // Create metadata
         let metadata = EncryptionMetadata {
@@ -228,7 +228,7 @@ impl BiometricEncryption {
 
         let plaintext = cipher
             .decrypt(nonce, encrypted_data.ciphertext.as_slice())
-            .map_err(|e| Error::crypto(&format!("Decryption failed: {}", e)))?;
+            .map_err(|e| Error::crypto(format!("Decryption failed: {}", e)))?;
 
         Ok(plaintext)
     }
@@ -291,7 +291,7 @@ impl BiometricEncryption {
             Err(_) => {
                 // No existing key, create new one
                 let key = CryptoSecret::generate()
-                    .map_err(|e| Error::crypto(&format!("Failed to generate master key: {}", e)))?;
+                    .map_err(|e| Error::crypto(format!("Failed to generate master key: {}", e)))?;
 
                 self.store_biometric_key(&key).await?;
                 self.cached_key = Some(key.clone());
@@ -328,7 +328,7 @@ impl BiometricEncryption {
         let hk = Hkdf::<Sha256>::new(Some(salt), master_key.as_bytes());
         let mut okm = [0u8; 32];
         hk.expand(b"webycash-biometric-v1", &mut okm)
-            .map_err(|e| Error::crypto(&format!("Key derivation failed: {}", e)))?;
+            .map_err(|e| Error::crypto(format!("Key derivation failed: {}", e)))?;
 
         Ok(CryptoSecret::from_bytes(okm))
     }
@@ -437,20 +437,18 @@ impl Drop for BiometricEncryption {
     }
 }
 
-/// Utility functions for biometric encryption
-
-/// Encrypt data with a password-based key (fallback when biometrics unavailable)
+/// Encrypt data with a password-based key (fallback when biometrics unavailable).
 pub fn encrypt_with_password(plaintext: &[u8], password: &str) -> Result<EncryptedData> {
     // Generate salt
     let mut salt = [0u8; 32];
     getrandom::getrandom(&mut salt)
-        .map_err(|e| Error::crypto(&format!("Failed to generate salt: {}", e)))?;
+        .map_err(|e| Error::crypto(format!("Failed to generate salt: {}", e)))?;
 
     // Derive key using Argon2 (more secure than PBKDF2)
     let mut key_bytes = [0u8; 32];
     argon2::Argon2::default()
         .hash_password_into(password.as_bytes(), &salt, &mut key_bytes)
-        .map_err(|e| Error::crypto(&format!("Password key derivation failed: {}", e)))?;
+        .map_err(|e| Error::crypto(format!("Password key derivation failed: {}", e)))?;
 
     let encryption_key = CryptoSecret::from_bytes(key_bytes);
 
@@ -458,12 +456,12 @@ pub fn encrypt_with_password(plaintext: &[u8], password: &str) -> Result<Encrypt
     let cipher = encryption_key.create_cipher();
     let mut nonce_bytes = [0u8; 12];
     getrandom::getrandom(&mut nonce_bytes)
-        .map_err(|e| Error::crypto(&format!("Failed to generate nonce: {}", e)))?;
+        .map_err(|e| Error::crypto(format!("Failed to generate nonce: {}", e)))?;
     let nonce = GenericArray::from_slice(&nonce_bytes);
 
     let ciphertext = cipher
-        .encrypt(&nonce, plaintext)
-        .map_err(|e| Error::crypto(&format!("Password encryption failed: {}", e)))?;
+        .encrypt(nonce, plaintext)
+        .map_err(|e| Error::crypto(format!("Password encryption failed: {}", e)))?;
 
     let metadata = EncryptionMetadata {
         encrypted_at: format!(
@@ -503,7 +501,7 @@ pub fn decrypt_with_password(encrypted_data: &EncryptedData, password: &str) -> 
     let mut key_bytes = [0u8; 32];
     argon2::Argon2::default()
         .hash_password_into(password.as_bytes(), &encrypted_data.salt, &mut key_bytes)
-        .map_err(|e| Error::crypto(&format!("Password key derivation failed: {}", e)))?;
+        .map_err(|e| Error::crypto(format!("Password key derivation failed: {}", e)))?;
 
     let decryption_key = CryptoSecret::from_bytes(key_bytes);
 
@@ -513,7 +511,7 @@ pub fn decrypt_with_password(encrypted_data: &EncryptedData, password: &str) -> 
 
     let plaintext = cipher
         .decrypt(nonce, encrypted_data.ciphertext.as_slice())
-        .map_err(|e| Error::crypto(&format!("Password decryption failed: {}", e)))?;
+        .map_err(|e| Error::crypto(format!("Password decryption failed: {}", e)))?;
 
     Ok(plaintext)
 }

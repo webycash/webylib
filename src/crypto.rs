@@ -77,7 +77,7 @@ impl CryptoSecret {
 
     /// Convert to hex string
     pub fn to_hex(&self) -> String {
-        hex::encode(&self.0)
+        hex::encode(self.0)
     }
 
     /// Get the raw key bytes (for compatibility with encryption libraries)

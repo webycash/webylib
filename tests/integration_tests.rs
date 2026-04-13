@@ -185,7 +185,7 @@ async fn test_cross_wallet_hd_recovery_integration() {
 
     let payment_webcash = SecretWebcash::new(
         crate::webcash::SecureString::new(pay_secret_hex),
-        webcash.amount.clone(),
+        webcash.amount,
     );
 
     let secondary_wallet = Wallet::open("secondary_test_wallet.db")
@@ -257,7 +257,7 @@ async fn test_cli_manual_workflow() {
     writeln!(history_file, "=== CLI MANUAL WORKFLOW HISTORY ===").unwrap();
     writeln!(history_file, "Input webcash: {}", test_secret).unwrap();
     writeln!(history_file, "Input amount: {} WEBCASH", input_amount).unwrap();
-    writeln!(history_file, "").unwrap();
+    writeln!(history_file).unwrap();
 
     println!("\n📁 STEP 1: Setup Wallet with Master Secret (CLI)");
 
@@ -268,7 +268,7 @@ async fn test_cli_manual_workflow() {
     fs::write(master_secret_path, &master_secret).expect("❌ Failed to save master secret");
 
     let setup_output = Command::new(cli_binary)
-        .args(&["--wallet", wallet_path, "setup", "-p", &master_secret])
+        .args(["--wallet", wallet_path, "setup", "-p", &master_secret])
         .output()
         .expect("❌ Failed to run webyc setup");
 
@@ -282,7 +282,7 @@ async fn test_cli_manual_workflow() {
     println!("\n📥 STEP 2: Insert Webcash (CLI)");
 
     let insert_output = Command::new(cli_binary)
-        .args(&["--wallet", wallet_path, "insert", &test_secret])
+        .args(["--wallet", wallet_path, "insert", &test_secret])
         .output()
         .expect("❌ Failed to run webyc insert");
 
@@ -302,7 +302,7 @@ async fn test_cli_manual_workflow() {
 
     println!("\n🔄 STEP 9: Recreate Wallet from Master Secret");
     let recreate_output = Command::new(cli_binary)
-        .args(&["--wallet", wallet_path, "setup", "-p", &master_secret])
+        .args(["--wallet", wallet_path, "setup", "-p", &master_secret])
         .output()
         .expect("❌ Failed to run webyc setup");
 
@@ -313,7 +313,7 @@ async fn test_cli_manual_workflow() {
 
     println!("\n🔄 STEP 10: Recover Webcash (CLI)");
     let recover_output = Command::new(cli_binary)
-        .args(&["--wallet", wallet_path, "recover", "--gap-limit", "20"])
+        .args(["--wallet", wallet_path, "recover", "--gap-limit", "20"])
         .output()
         .expect("❌ Failed to run webyc recover");
 
@@ -324,7 +324,7 @@ async fn test_cli_manual_workflow() {
 
     println!("\n🎯 STEP 12: Generate Final Output (CLI)");
     let balance_check = Command::new(cli_binary)
-        .args(&["--wallet", wallet_path, "info"])
+        .args(["--wallet", wallet_path, "info"])
         .output()
         .expect("❌ Failed to check balance");
 
@@ -355,7 +355,7 @@ async fn test_cli_manual_workflow() {
 
     let amount_str = format!("{}", current_balance);
     let final_pay_output = Command::new(cli_binary)
-        .args(&[
+        .args([
             "--wallet",
             wallet_path,
             "pay",
@@ -395,11 +395,13 @@ async fn test_cli_manual_workflow() {
                 if line.contains(":secret:") {
                     let parts: Vec<&str> = line.split_whitespace().collect();
                     for part in parts {
-                        if part.starts_with("e") && part.contains(":secret:") && part.len() > 70 {
-                            if webylib::SecretWebcash::parse(part).is_ok() {
-                                output_secret = part.to_string();
-                                break;
-                            }
+                        if part.starts_with("e")
+                            && part.contains(":secret:")
+                            && part.len() > 70
+                            && webylib::SecretWebcash::parse(part).is_ok()
+                        {
+                            output_secret = part.to_string();
+                            break;
                         }
                     }
                     if !output_secret.is_empty() {
@@ -469,7 +471,7 @@ async fn recover_and_pay(
     history_file: &mut std::fs::File,
 ) -> String {
     match wallet.recover(master_secret, 20).await {
-        Ok(summary) => {
+        Ok(_summary) => {
             writeln!(history_file, "  Recovery: SUCCESS").unwrap();
 
             let balance = wallet
@@ -1327,7 +1329,7 @@ async fn test_runtime_database_encryption_workflow() {
         .list_webcash()
         .await
         .expect("Failed to list webcash");
-    assert!(webcash_list.len() > 0);
+    assert!(!webcash_list.is_empty());
 
     wallet2
         .close()
@@ -1469,13 +1471,13 @@ async fn test_multiple_encryption_cycles() {
         } else {
             Wallet::open_with_biometric(&wallet_path, true)
                 .await
-                .expect(&format!("Failed to open wallet in cycle {}", cycle))
+                .unwrap_or_else(|_| panic!("Failed to open wallet in cycle {}", cycle))
         };
 
         let balance = wallet
             .balance_amount()
             .await
-            .expect(&format!("Failed to get balance in cycle {}", cycle));
+            .unwrap_or_else(|_| panic!("Failed to get balance in cycle {}", cycle));
         assert!(balance > Amount::from_str("0").unwrap());
 
         let cycle_webcash = SecretWebcash::parse(&format!(
@@ -1493,7 +1495,7 @@ async fn test_multiple_encryption_cycles() {
         wallet
             .close()
             .await
-            .expect(&format!("Failed to close wallet in cycle {}", cycle));
+            .unwrap_or_else(|_| panic!("Failed to close wallet in cycle {}", cycle));
 
         assert!(Wallet::is_database_encrypted(&wallet_path).unwrap());
     }

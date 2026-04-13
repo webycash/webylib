@@ -107,13 +107,13 @@ impl ServerClient {
             // Try to parse error response for detailed error message
             if let Ok(error_response) = serde_json::from_str::<serde_json::Value>(&response_text) {
                 if let Some(error_msg) = error_response.get("error").and_then(|v| v.as_str()) {
-                    return Err(Error::server(&format!(
+                    return Err(Error::server(format!(
                         "Replace request failed: {}",
                         error_msg
                     )));
                 }
             }
-            return Err(Error::server(&format!(
+            return Err(Error::server(format!(
                 "Replace request failed with status {}: {}",
                 status, response_text
             )));

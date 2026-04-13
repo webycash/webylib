@@ -14,7 +14,7 @@ impl Wallet {
             return Ok(false);
         }
         let bytes = fs::read(path)
-            .map_err(|e| Error::wallet(&format!("Failed to read database file: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Failed to read database file: {}", e)))?;
         if bytes.len() < 16 {
             return Ok(false);
         }
@@ -25,39 +25,39 @@ impl Wallet {
     /// Decrypt database for runtime use (returns path to temp decrypted file).
     pub(crate) async fn decrypt_database_for_runtime(encrypted_path: &PathBuf) -> Result<PathBuf> {
         let encrypted_bytes = fs::read(encrypted_path)
-            .map_err(|e| Error::wallet(&format!("Failed to read encrypted database: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Failed to read encrypted database: {}", e)))?;
         let encrypted_data: EncryptedData = serde_json::from_slice(&encrypted_bytes)
-            .map_err(|e| Error::wallet(&format!("Invalid encrypted database format: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Invalid encrypted database format: {}", e)))?;
         let decrypted_bytes = decrypt_with_password(&encrypted_data, "biometric_placeholder")
-            .map_err(|e| Error::wallet(&format!("Failed to decrypt database: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Failed to decrypt database: {}", e)))?;
         let temp_path = encrypted_path.with_extension("temp.db");
         fs::write(&temp_path, decrypted_bytes)
-            .map_err(|e| Error::wallet(&format!("Failed to write decrypted database: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Failed to write decrypted database: {}", e)))?;
         Ok(temp_path)
     }
 
     /// Encrypt the wallet database with a password.
     pub async fn encrypt_database_with_password(&self, password: &str) -> Result<()> {
         let db_bytes = fs::read(&self.path)
-            .map_err(|e| Error::wallet(&format!("Failed to read database: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Failed to read database: {}", e)))?;
         let encrypted_data = encrypt_with_password(&db_bytes, password)?;
         let encrypted_json = serde_json::to_vec_pretty(&encrypted_data)
-            .map_err(|e| Error::wallet(&format!("Failed to serialize encrypted data: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Failed to serialize encrypted data: {}", e)))?;
         fs::write(&self.path, encrypted_json)
-            .map_err(|e| Error::wallet(&format!("Failed to write encrypted database: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Failed to write encrypted database: {}", e)))?;
         Ok(())
     }
 
     /// Decrypt the wallet database with a password.
     pub async fn decrypt_database_with_password(&self, password: &str) -> Result<()> {
         let encrypted_bytes = fs::read(&self.path)
-            .map_err(|e| Error::wallet(&format!("Failed to read encrypted database: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Failed to read encrypted database: {}", e)))?;
         let encrypted_data: EncryptedData = serde_json::from_slice(&encrypted_bytes)
-            .map_err(|e| Error::wallet(&format!("Invalid encrypted database format: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Invalid encrypted database format: {}", e)))?;
         let decrypted_bytes = decrypt_with_password(&encrypted_data, password)
-            .map_err(|e| Error::wallet(&format!("Failed to decrypt database: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Failed to decrypt database: {}", e)))?;
         fs::write(&self.path, decrypted_bytes)
-            .map_err(|e| Error::wallet(&format!("Failed to write decrypted database: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Failed to write decrypted database: {}", e)))?;
         Ok(())
     }
 
@@ -75,17 +75,17 @@ impl Wallet {
 
         let db_bytes = if let Some(temp_path) = &self.temp_db_path {
             fs::read(temp_path)
-                .map_err(|e| Error::wallet(&format!("Failed to read temp database: {}", e)))?
+                .map_err(|e| Error::wallet(format!("Failed to read temp database: {}", e)))?
         } else {
             fs::read(&self.path)
-                .map_err(|e| Error::wallet(&format!("Failed to read database: {}", e)))?
+                .map_err(|e| Error::wallet(format!("Failed to read database: {}", e)))?
         };
 
         let encrypted_data = biometric.encrypt_with_biometrics(&db_bytes).await?;
         let encrypted_json = serde_json::to_vec_pretty(&encrypted_data)
-            .map_err(|e| Error::wallet(&format!("Failed to serialize encrypted data: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Failed to serialize encrypted data: {}", e)))?;
         fs::write(&self.path, encrypted_json)
-            .map_err(|e| Error::wallet(&format!("Failed to write encrypted database: {}", e)))?;
+            .map_err(|e| Error::wallet(format!("Failed to write encrypted database: {}", e)))?;
 
         if let Some(temp_path) = &self.temp_db_path {
             let _ = fs::remove_file(temp_path);
@@ -116,7 +116,7 @@ impl Wallet {
             biometric
                 .encrypt_with_biometrics(&wallet_data)
                 .await
-                .map_err(|e| Error::wallet(&format!("Biometric encryption failed: {}", e)))
+                .map_err(|e| Error::wallet(format!("Biometric encryption failed: {}", e)))
         } else {
             Err(Error::wallet(
                 "Biometric encryption not enabled for this wallet",
@@ -133,7 +133,7 @@ impl Wallet {
             let wallet_data = biometric
                 .decrypt_with_biometrics(encrypted_data)
                 .await
-                .map_err(|e| Error::wallet(&format!("Biometric decryption failed: {}", e)))?;
+                .map_err(|e| Error::wallet(format!("Biometric decryption failed: {}", e)))?;
             self.import_wallet_data(&wallet_data).await
         } else {
             Err(Error::wallet(
