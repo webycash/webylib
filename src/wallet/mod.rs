@@ -38,8 +38,8 @@ pub struct Wallet {
     pub(crate) path: PathBuf,
     /// SQLite connection (Mutex for thread safety).
     pub(crate) connection: Mutex<Connection>,
-    /// Server client for webcash operations.
-    pub(crate) server_client: Mutex<Box<dyn ServerClientTrait + Send>>,
+    /// Server client for webcash operations (tokio Mutex: safe to hold across .await).
+    pub(crate) server_client: tokio::sync::Mutex<Box<dyn ServerClientTrait + Send>>,
     /// Passkey encryption handler (optional).
     pub(crate) passkey_encryption: Option<Mutex<PasskeyEncryption>>,
     /// Whether this wallet uses runtime encryption.
@@ -102,7 +102,7 @@ impl Wallet {
         let wallet = Wallet {
             path,
             connection: Mutex::new(connection),
-            server_client: Mutex::new(server_client),
+            server_client: tokio::sync::Mutex::new(server_client),
             passkey_encryption,
             is_encrypted,
             temp_db_path,
@@ -132,7 +132,7 @@ impl Wallet {
         let wallet = Wallet {
             path,
             connection: Mutex::new(connection),
-            server_client: Mutex::new(server_client),
+            server_client: tokio::sync::Mutex::new(server_client),
             passkey_encryption: None,
             is_encrypted: false,
             temp_db_path: None,
@@ -184,7 +184,7 @@ impl Wallet {
         let wallet = Wallet {
             path: PathBuf::from(":memory:"),
             connection: Mutex::new(connection),
-            server_client: Mutex::new(server_client),
+            server_client: tokio::sync::Mutex::new(server_client),
             passkey_encryption: None,
             is_encrypted: false,
             temp_db_path: None,

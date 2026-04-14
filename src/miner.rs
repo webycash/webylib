@@ -69,10 +69,7 @@ fn leading_zero_bits(hash: &[u8]) -> u32 {
 pub async fn mine(wallet: &Wallet) -> Result<MineResult> {
     // 1. Get mining target from server
     let target = {
-        let server = wallet
-            .server_client
-            .lock()
-            .map_err(|_| Error::wallet("server client lock poisoned"))?;
+        let server = wallet.server_client.lock().await;
         server.get_target().await?
     };
 
@@ -146,10 +143,7 @@ pub async fn mine(wallet: &Wallet) -> Result<MineResult> {
     };
 
     {
-        let server = wallet
-            .server_client
-            .lock()
-            .map_err(|_| Error::wallet("server client lock poisoned"))?;
+        let server = wallet.server_client.lock().await;
         server.submit_mining_report(&report).await?;
     }
 

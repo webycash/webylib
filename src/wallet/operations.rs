@@ -297,10 +297,7 @@ impl Wallet {
             legalese: Legalese { terms: true },
         };
 
-        let server = self
-            .server_client
-            .lock()
-            .map_err(|_| Error::wallet("Failed to acquire server client lock"))?;
+        let server = self.server_client.lock().await;
 
         match server.replace(&replace_request).await {
             Ok(resp) if resp.status == "success" => {
@@ -362,10 +359,7 @@ impl Wallet {
 
     /// Validate input webcash against the server (health check).
     async fn validate_input_webcash(&self, webcash: &SecretWebcash) -> Result<()> {
-        let server = self
-            .server_client
-            .lock()
-            .map_err(|_| Error::wallet("Failed to acquire server client lock"))?;
+        let server = self.server_client.lock().await;
         let public_webcash = webcash.to_public();
         let health = server
             .health_check(std::slice::from_ref(&public_webcash))
@@ -447,10 +441,7 @@ impl Wallet {
             legalese: Legalese { terms: true },
         };
 
-        let server = self
-            .server_client
-            .lock()
-            .map_err(|_| Error::wallet("Failed to acquire server client lock"))?;
+        let server = self.server_client.lock().await;
         let response = server.replace(&replace_request).await?;
         drop(server);
 
@@ -611,10 +602,7 @@ impl Wallet {
             });
         }
 
-        let server = self
-            .server_client
-            .lock()
-            .map_err(|_| Error::wallet("Failed to acquire server client lock"))?;
+        let server = self.server_client.lock().await;
         let health_response = server.health_check(&public_webcash_list).await?;
         drop(server);
 
@@ -687,10 +675,7 @@ impl Wallet {
             legalese: Legalese { terms: true },
         };
 
-        let server = self
-            .server_client
-            .lock()
-            .map_err(|_| Error::wallet("Failed to acquire server client lock"))?;
+        let server = self.server_client.lock().await;
         let response = server.replace(&replace_request).await?;
         drop(server);
 
@@ -861,10 +846,7 @@ impl Wallet {
                     batch_webcash.push(public_webcash);
                 }
 
-                let server = self
-                    .server_client
-                    .lock()
-                    .map_err(|_| Error::wallet("Failed to acquire server client lock"))?;
+                let server = self.server_client.lock().await;
                 let health_result = server.health_check(&batch_webcash).await;
                 drop(server);
 
