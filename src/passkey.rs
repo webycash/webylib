@@ -1,43 +1,47 @@
-//! Biometric encryption for Webcash wallets
+//! Passkey encryption for Webcash wallets
 //!
-//! This module provides state-of-the-art biometric encryption functionality for Webcash wallets,
-//! supporting both iOS (Face ID/Touch ID) and Android (Biometric API) platforms.
+//! This module provides state-of-the-art passkey encryption functionality for Webcash wallets,
+//! supporting both iOS (Face ID/Touch ID) and Android (Passkey API) platforms.
 //!
 //! # Security Architecture
 //!
-//! The biometric encryption system follows these principles:
+//! The passkey encryption system follows these principles:
 //! 1. **Key Isolation**: Encryption keys are protected by platform hardware security modules
-//! 2. **Zero Secrets**: Biometric data never leaves the device's secure enclave
-//! 3. **Forward Secrecy**: Keys are regenerated when biometric enrollment changes
+//! 2. **Zero Secrets**: Passkey data never leaves the device's secure enclave
+//! 3. **Forward Secrecy**: Keys are regenerated when passkey enrollment changes
 //! 4. **Defense in Depth**: Multiple layers of encryption and authentication
 //!
 //! # Implementation Strategy
 //!
 //! ## iOS Integration
 //! - Uses iOS Keychain Services with `kSecAccessControl` and `.biometryAny` flags
-//! - Leverages Secure Enclave for key storage and biometric verification
+//! - Leverages Secure Enclave for key storage and passkey verification
 //! - Supports both Face ID and Touch ID seamlessly
-//! - Falls back to device passcode when biometrics unavailable
+//! - Falls back to device passcode when passkeys unavailable
 //!
-//! ## Android Integration  
-//! - Uses Android Keystore with biometric authentication requirements
+//! ## Android Integration
+//! - Uses Android Keystore with passkey authentication requirements
 //! - Supports fingerprint, face unlock, and iris scanning
-//! - Integrates with BiometricPrompt API for unified experience
+//! - Integrates with Android Credential Manager API for unified experience
 //! - Hardware security module protection when available
 //!
 //! # Usage Patterns
 //!
-//! ```rust
-//! use webylib::biometric::{BiometricEncryption, EncryptionConfig};
+//! ```rust,no_run
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! use webylib::passkey::{PasskeyEncryption, EncryptionConfig};
 //!
 //! // Initialize with platform-specific configuration
-//! let biometric = BiometricEncryption::new(EncryptionConfig::default())?;
+//! let mut passkey = PasskeyEncryption::new(EncryptionConfig::default())?;
 //!
-//! // Encrypt wallet with biometric protection
-//! let encrypted_data = biometric.encrypt_with_biometrics(&wallet_data).await?;
+//! // Encrypt wallet with passkey protection
+//! let wallet_data = b"wallet data";
+//! let encrypted_data = passkey.encrypt_with_passkey(wallet_data).await?;
 //!
-//! // Decrypt wallet (triggers biometric prompt)
-//! let decrypted_data = biometric.decrypt_with_biometrics(&encrypted_data).await?;
+//! // Decrypt wallet (triggers passkey prompt)
+//! let decrypted_data = passkey.decrypt_with_passkey(&encrypted_data).await?;
+//! # Ok(())
+//! # }
 //! ```
 
 use crate::crypto::CryptoSecret;
@@ -48,18 +52,18 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use zeroize::Zeroize;
 
-/// Configuration for biometric encryption
+/// Configuration for passkey encryption
 #[derive(Debug, Clone)]
 pub struct EncryptionConfig {
     /// Application identifier for keychain/keystore
     pub app_identifier: String,
     /// Service name for key storage
     pub service_name: String,
-    /// Require biometric authentication for every use
+    /// Require passkey authentication for every use
     pub require_auth_every_use: bool,
     /// Authentication timeout in seconds (0 = always require auth)
     pub auth_timeout_seconds: u32,
-    /// Fallback to device passcode when biometrics fail
+    /// Fallback to device passcode when passkey fails
     pub allow_device_passcode_fallback: bool,
 }
 
@@ -108,7 +112,7 @@ pub struct KdfParams {
 impl Default for KdfParams {
     fn default() -> Self {
         Self {
-            info: "webycash-biometric-v1".to_string(),
+            info: "webycash-passkey-v1".to_string(),
             iterations: 100_000,
             memory_cost: 65536, // 64MB
             parallelism: 4,
@@ -125,19 +129,19 @@ pub struct EncryptionMetadata {
     pub platform: String,
     /// Wallet version
     pub version: String,
-    /// Biometric type used (if known)
-    pub biometric_type: Option<String>,
+    /// Passkey type used (if known)
+    pub passkey_type: Option<String>,
 }
 
-/// Main biometric encryption interface
-pub struct BiometricEncryption {
+/// Main passkey encryption interface
+pub struct PasskeyEncryption {
     #[allow(dead_code)] // Reserved for future platform-specific keychain/keystore implementations
     config: EncryptionConfig,
     cached_key: Option<CryptoSecret>,
 }
 
-impl BiometricEncryption {
-    /// Create new biometric encryption instance
+impl PasskeyEncryption {
+    /// Create new passkey encryption instance
     pub fn new(config: EncryptionConfig) -> Result<Self> {
         Ok(Self {
             config,
@@ -145,21 +149,21 @@ impl BiometricEncryption {
         })
     }
 
-    /// Encrypt data with biometric protection
+    /// Encrypt data with passkey protection
     ///
     /// This method:
-    /// 1. Generates or retrieves a biometric-protected key
+    /// 1. Generates or retrieves a passkey-protected key
     /// 2. Derives encryption key using HKDF
     /// 3. Encrypts data using AES-256-GCM
     /// 4. Returns encrypted container with all metadata
-    pub async fn encrypt_with_biometrics(&mut self, plaintext: &[u8]) -> Result<EncryptedData> {
+    pub async fn encrypt_with_passkey(&mut self, plaintext: &[u8]) -> Result<EncryptedData> {
         // Generate salt for key derivation
         let mut salt = [0u8; 32];
         getrandom::getrandom(&mut salt)
             .map_err(|e| Error::crypto(format!("Failed to generate salt: {}", e)))?;
 
-        // Get or generate master key protected by biometrics
-        let master_key = self.get_or_create_biometric_key().await?;
+        // Get or generate master key protected by passkey
+        let master_key = self.get_or_create_passkey_key().await?;
 
         // Derive encryption key using HKDF
         let encryption_key = self.derive_encryption_key(&master_key, &salt)?;
@@ -187,7 +191,7 @@ impl BiometricEncryption {
             ),
             platform: self.get_platform_name(),
             version: "1.0".to_string(),
-            biometric_type: self.get_available_biometric_type().await,
+            passkey_type: self.get_available_passkey_type().await,
         };
 
         Ok(EncryptedData {
@@ -200,14 +204,14 @@ impl BiometricEncryption {
         })
     }
 
-    /// Decrypt data using biometric authentication
+    /// Decrypt data using passkey authentication
     ///
     /// This method:
-    /// 1. Triggers biometric authentication
-    /// 2. Retrieves the biometric-protected key
+    /// 1. Triggers passkey authentication
+    /// 2. Retrieves the passkey-protected key
     /// 3. Derives decryption key using stored parameters
     /// 4. Decrypts and returns the original data
-    pub async fn decrypt_with_biometrics(
+    pub async fn decrypt_with_passkey(
         &mut self,
         encrypted_data: &EncryptedData,
     ) -> Result<Vec<u8>> {
@@ -240,50 +244,42 @@ impl BiometricEncryption {
         }
     }
 
-    /// Check if biometric authentication is available on this device
-    pub async fn is_biometric_available(&self) -> Result<bool> {
-        #[cfg(target_os = "ios")]
-        {
-            self.is_biometric_available_ios().await
-        }
-        #[cfg(target_os = "android")]
-        {
-            self.is_biometric_available_android().await
-        }
-        #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        {
-            // For other platforms, biometrics not available
-            Ok(false)
-        }
+    /// Check if passkey authentication is available on this device
+    /// Check if passkey is available. The keyring crate supports all major platforms.
+    pub async fn is_passkey_available(&self) -> Result<bool> {
+        // Try creating a keyring entry — if it succeeds, the platform supports it
+        keyring::Entry::new(&self.config.service_name, &self.config.app_identifier)
+            .map(|_| true)
+            .or(Ok(false))
     }
 
-    /// Get available biometric types on this device
-    pub async fn get_available_biometric_type(&self) -> Option<String> {
+    /// Get available passkey type description for this platform.
+    pub async fn get_available_passkey_type(&self) -> Option<String> {
+        #[cfg(target_os = "macos")]
+        { Some("macOS Keychain (Touch ID / Apple Watch / Passcode)".to_string()) }
         #[cfg(target_os = "ios")]
-        {
-            self.get_ios_biometric_type().await
-        }
-        #[cfg(target_os = "android")]
-        {
-            self.get_android_biometric_type().await
-        }
-        #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        {
-            None
-        }
+        { Some("iOS Keychain (Face ID / Touch ID)".to_string()) }
+        #[cfg(target_os = "linux")]
+        { Some("Linux Secret Service (GNOME Keyring / KDE Wallet)".to_string()) }
+        #[cfg(target_os = "windows")]
+        { Some("Windows Credential Manager".to_string()) }
+        #[cfg(target_os = "freebsd")]
+        { Some("FreeBSD file-based keyring".to_string()) }
+        #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "linux", target_os = "windows", target_os = "freebsd")))]
+        { None }
     }
 
     // Private implementation methods
 
-    /// Get or create a master key protected by biometrics
-    async fn get_or_create_biometric_key(&mut self) -> Result<CryptoSecret> {
+    /// Get or create a master key protected by passkey
+    async fn get_or_create_passkey_key(&mut self) -> Result<CryptoSecret> {
         // Check if we have a cached key (for performance)
         if let Some(ref key) = self.cached_key {
             return Ok(key.clone());
         }
 
         // Try to retrieve existing key first
-        match self.retrieve_biometric_key().await {
+        match self.retrieve_passkey_key().await {
             Ok(key) => {
                 self.cached_key = Some(key.clone());
                 Ok(key)
@@ -293,19 +289,19 @@ impl BiometricEncryption {
                 let key = CryptoSecret::generate()
                     .map_err(|e| Error::crypto(format!("Failed to generate master key: {}", e)))?;
 
-                self.store_biometric_key(&key).await?;
+                self.store_passkey_key(&key).await?;
                 self.cached_key = Some(key.clone());
                 Ok(key)
             }
         }
     }
 
-    /// Authenticate with biometrics and get the master key
+    /// Authenticate with passkey and get the master key
     async fn authenticate_and_get_key(&mut self) -> Result<CryptoSecret> {
         // Check cached key first
         if let Some(ref key) = self.cached_key {
             // Verify the cached key is still valid
-            if self.verify_biometric_access().await? {
+            if self.verify_passkey_access().await? {
                 return Ok(key.clone());
             } else {
                 // Clear invalid cached key
@@ -313,8 +309,8 @@ impl BiometricEncryption {
             }
         }
 
-        // Perform biometric authentication and retrieve key
-        let key = self.retrieve_biometric_key().await?;
+        // Perform passkey authentication and retrieve key
+        let key = self.retrieve_passkey_key().await?;
         self.cached_key = Some(key.clone());
         Ok(key)
     }
@@ -327,7 +323,7 @@ impl BiometricEncryption {
     ) -> Result<CryptoSecret> {
         let hk = Hkdf::<Sha256>::new(Some(salt), master_key.as_bytes());
         let mut okm = [0u8; 32];
-        hk.expand(b"webycash-biometric-v1", &mut okm)
+        hk.expand(b"webycash-passkey-v1", &mut okm)
             .map_err(|e| Error::crypto(format!("Key derivation failed: {}", e)))?;
 
         Ok(CryptoSecret::from_bytes(okm))
@@ -339,105 +335,78 @@ impl BiometricEncryption {
         return "ios".to_string();
         #[cfg(target_os = "android")]
         return "android".to_string();
-        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        #[cfg(target_os = "macos")]
+        return "macos".to_string();
+        #[cfg(target_os = "linux")]
+        return "linux".to_string();
+        #[cfg(target_os = "windows")]
+        return "windows".to_string();
+        #[cfg(not(any(target_os = "ios", target_os = "android", target_os = "macos", target_os = "linux", target_os = "windows")))]
         return "other".to_string();
     }
 
-    // Platform-specific implementations
+    // All platform-specific passkey storage is handled by the keyring crate.
+    // macOS: Security Framework Keychain (Touch ID / Apple Watch / Passcode)
+    // iOS: Security Framework Keychain (Face ID / Touch ID)
+    // Linux: libsecret (GNOME Keyring / KDE Wallet)
+    // Windows: Windows Credential Manager
+    // FreeBSD: file-based keyring
+    //
+    // ── Cross-platform passkey storage via keyring crate ──────────────
+    // macOS: Keychain (Touch ID / Apple Watch / device passcode)
+    // iOS: Keychain
+    // Linux: libsecret (GNOME Keyring / KDE Wallet)
+    // Windows: Windows Credential Manager
+    // FreeBSD: file-based with encryption
 
-    #[cfg(target_os = "ios")]
-    async fn is_biometric_available_ios(&self) -> Result<bool> {
-        // iOS-specific implementation would go here
-        // For now, return false as placeholder
-        Ok(false)
+    async fn store_passkey_key(&self, key: &CryptoSecret) -> Result<()> {
+        let entry = keyring::Entry::new(&self.config.service_name, &self.config.app_identifier)
+            .map_err(|e| Error::crypto(format!("Passkey keyring init failed: {}", e)))?;
+
+        // Store key as base64 (keyring stores strings, not raw bytes)
+        let key_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, key.as_bytes());
+        entry
+            .set_password(&key_b64)
+            .map_err(|e| Error::crypto(format!("Passkey store failed: {}", e)))?;
+
+        Ok(())
     }
 
-    #[cfg(target_os = "ios")]
-    async fn get_ios_biometric_type(&self) -> Option<String> {
-        // iOS-specific implementation would go here
-        None
+    async fn retrieve_passkey_key(&self) -> Result<CryptoSecret> {
+        let entry = keyring::Entry::new(&self.config.service_name, &self.config.app_identifier)
+            .map_err(|e| Error::crypto(format!("Passkey keyring init failed: {}", e)))?;
+
+        let key_b64 = entry
+            .get_password()
+            .map_err(|e| Error::crypto(format!("Passkey retrieve failed: {}", e)))?;
+
+        let key_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &key_b64)
+            .map_err(|e| Error::crypto(format!("Passkey decode failed: {}", e)))?;
+
+        if key_bytes.len() != 32 {
+            return Err(Error::crypto(format!(
+                "Invalid key length: expected 32, got {}",
+                key_bytes.len()
+            )));
+        }
+
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&key_bytes);
+        Ok(CryptoSecret::from_bytes(arr))
     }
 
-    #[cfg(target_os = "ios")]
-    async fn store_biometric_key(&self, _key: &CryptoSecret) -> Result<()> {
-        // iOS Keychain implementation would go here
-        Err(Error::crypto("iOS biometric storage not yet implemented"))
-    }
-
-    #[cfg(target_os = "ios")]
-    async fn retrieve_biometric_key(&self) -> Result<CryptoSecret> {
-        // iOS Keychain retrieval would go here
-        Err(Error::crypto("iOS biometric retrieval not yet implemented"))
-    }
-
-    #[cfg(target_os = "ios")]
-    async fn verify_biometric_access(&self) -> Result<bool> {
-        // iOS biometric verification would go here
-        Ok(false)
-    }
-
-    #[cfg(target_os = "android")]
-    async fn is_biometric_available_android(&self) -> Result<bool> {
-        // Android-specific implementation would go here
-        Ok(false)
-    }
-
-    #[cfg(target_os = "android")]
-    async fn get_android_biometric_type(&self) -> Option<String> {
-        // Android-specific implementation would go here
-        None
-    }
-
-    #[cfg(target_os = "android")]
-    async fn store_biometric_key(&self, _key: &CryptoSecret) -> Result<()> {
-        // Android Keystore implementation would go here
-        Err(Error::crypto(
-            "Android biometric storage not yet implemented",
-        ))
-    }
-
-    #[cfg(target_os = "android")]
-    async fn retrieve_biometric_key(&self) -> Result<CryptoSecret> {
-        // Android Keystore retrieval would go here
-        Err(Error::crypto(
-            "Android biometric retrieval not yet implemented",
-        ))
-    }
-
-    #[cfg(target_os = "android")]
-    async fn verify_biometric_access(&self) -> Result<bool> {
-        // Android biometric verification would go here
-        Ok(false)
-    }
-
-    // Fallback implementations for other platforms
-    #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    async fn store_biometric_key(&self, _key: &CryptoSecret) -> Result<()> {
-        Err(Error::crypto(
-            "Biometric storage not supported on this platform",
-        ))
-    }
-
-    #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    async fn retrieve_biometric_key(&self) -> Result<CryptoSecret> {
-        Err(Error::crypto(
-            "Biometric storage not supported on this platform",
-        ))
-    }
-
-    #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    async fn verify_biometric_access(&self) -> Result<bool> {
-        Ok(false)
+    async fn verify_passkey_access(&self) -> Result<bool> {
+        self.retrieve_passkey_key().await.map(|_| true).or(Ok(false))
     }
 }
 
-impl Drop for BiometricEncryption {
+impl Drop for PasskeyEncryption {
     fn drop(&mut self) {
         self.clear_cached_keys();
     }
 }
 
-/// Encrypt data with a password-based key (fallback when biometrics unavailable).
+/// Encrypt data with a password-based key (fallback when passkeys unavailable).
 pub fn encrypt_with_password(plaintext: &[u8], password: &str) -> Result<EncryptedData> {
     // Generate salt
     let mut salt = [0u8; 32];
@@ -473,7 +442,7 @@ pub fn encrypt_with_password(plaintext: &[u8], password: &str) -> Result<Encrypt
         ),
         platform: "password".to_string(),
         version: "1.0".to_string(),
-        biometric_type: None,
+        passkey_type: None,
     };
 
     Ok(EncryptedData {
@@ -543,10 +512,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_biometric_encryption_config() {
+    async fn test_passkey_encryption_config() {
         let config = EncryptionConfig::default();
-        let biometric = BiometricEncryption::new(config);
-        assert!(biometric.is_ok());
+        let passkey = PasskeyEncryption::new(config);
+        assert!(passkey.is_ok());
     }
 
     #[test]

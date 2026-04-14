@@ -4,24 +4,36 @@ use webylib::PublicWebcash;
 #[test]
 fn test_server_config_default() {
     let config = ServerConfig::default();
-    assert_eq!(config.base_url, "https://webcash.org");
+    assert_eq!(config.base_url(), "https://webcash.org");
     assert_eq!(config.timeout_seconds, 30);
 }
 
 #[tokio::test]
 async fn test_server_client_creation() {
-    // Just test that it can be created without panicking
     let _client = ServerClient::new().unwrap();
 }
 
 #[test]
 fn test_server_config_custom() {
     let config = ServerConfig {
-        base_url: "https://test.webcash.org".to_string(),
+        network: NetworkMode::Custom("https://test.webcash.org".to_string()),
         timeout_seconds: 60,
     };
-    assert_eq!(config.base_url, "https://test.webcash.org");
+    assert_eq!(config.base_url(), "https://test.webcash.org");
     assert_eq!(config.timeout_seconds, 60);
+}
+
+#[test]
+fn test_network_mode_urls() {
+    assert_eq!(NetworkMode::Production.base_url(), "https://webcash.org");
+    assert_eq!(
+        NetworkMode::Testnet.base_url(),
+        "https://weby.cash/api/webcash/testnet"
+    );
+    assert_eq!(
+        NetworkMode::Custom("http://localhost:8080".into()).base_url(),
+        "http://localhost:8080"
+    );
 }
 
 #[test]

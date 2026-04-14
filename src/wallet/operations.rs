@@ -875,3 +875,62 @@ impl Wallet {
         })
     }
 }
+
+// ── Mining helpers ──────────────────────────────────────────────────
+
+impl Wallet {
+    /// Derive the next HD secret for the given chain code and increment the depth.
+    /// Returns (secret_hex, depth_used).
+    pub fn derive_next_secret(
+        &self,
+        chain_code: crate::hd::ChainCode,
+    ) -> Result<(String, u64)> {
+        let master_secret_hex = self.get_master_secret()?;
+        let master_secret_array = self.validate_master_secret(&master_secret_hex)?;
+        let hd_wallet = HDWallet::from_master_secret(master_secret_array);
+
+        let chain_name = match chain_code {
+            crate::hd::ChainCode::Receive => "RECEIVE",
+            crate::hd::ChainCode::Pay => "PAY",
+            crate::hd::ChainCode::Change => "CHANGE",
+            crate::hd::ChainCode::Mining => "MINING",
+        };
+
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| Error::wallet("Failed to acquire database lock"))?;
+
+        // Get current depth (or 0 if not set)
+        let depth: i64 = connection
+            .query_row(
+                "SELECT depth FROM walletdepths WHERE chain_code = ?",
+                params![chain_name],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or(0);
+
+        let depth_u64 = depth as u64;
+
+        // Derive secret at this depth
+        let secret_hex = hd_wallet
+            .derive_secret(chain_code, depth_u64)
+            .map_err(|e| Error::crypto(format!("HD derivation failed: {}", e)))?;
+
+        // Increment depth
+        connection.execute(
+            "INSERT INTO walletdepths (chain_code, depth) VALUES (?, ?)
+             ON CONFLICT(chain_code) DO UPDATE SET depth = excluded.depth",
+            params![chain_name, depth + 1],
+        )?;
+
+        Ok((secret_hex, depth_u64))
+    }
+
+    /// Convenience method: mine webcash using the light CPU miner.
+    /// See [`crate::miner::mine`] for details.
+    pub async fn mine(&self) -> Result<crate::miner::MineResult> {
+        crate::miner::mine(self).await
+    }
+}

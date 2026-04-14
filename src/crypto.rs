@@ -2,7 +2,7 @@
 //!
 //! This module provides cryptographic functions used throughout the Webcash system,
 //! including SHA256 hashing, HMAC-SHA512, secure random number generation, and
-//! biometric encryption capabilities.
+//! passkey encryption capabilities.
 
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256, Sha512};

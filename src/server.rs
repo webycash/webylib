@@ -21,6 +21,35 @@ pub mod endpoints {
     pub const MINING_REPORT: &str = "/api/v1/mining_report";
 }
 
+/// Network mode selection — the single source of truth for which server
+/// the wallet communicates with. Each Wallet instance owns its network mode.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NetworkMode {
+    /// Production webcash.org server.
+    Production,
+    /// Webycash testnet at weby.cash.
+    Testnet,
+    /// Custom server URL (e.g., localhost:8080 for local development).
+    Custom(String),
+}
+
+impl NetworkMode {
+    /// Base URL for the selected network.
+    pub fn base_url(&self) -> &str {
+        match self {
+            NetworkMode::Production => "https://webcash.org",
+            NetworkMode::Testnet => "https://weby.cash/api/webcash/testnet",
+            NetworkMode::Custom(url) => url.as_str(),
+        }
+    }
+}
+
+impl Default for NetworkMode {
+    fn default() -> Self {
+        NetworkMode::Production
+    }
+}
+
 /// Cross-platform server client trait
 #[async_trait::async_trait]
 pub trait ServerClientTrait {
@@ -36,16 +65,23 @@ pub trait ServerClientTrait {
 /// Server configuration
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
-    /// Base URL of the Webcash server
-    pub base_url: String,
-    /// Request timeout in seconds
+    /// Network mode (determines base URL).
+    pub network: NetworkMode,
+    /// Request timeout in seconds.
     pub timeout_seconds: u64,
+}
+
+impl ServerConfig {
+    /// Base URL derived from the network mode.
+    pub fn base_url(&self) -> &str {
+        self.network.base_url()
+    }
 }
 
 impl Default for ServerConfig {
     fn default() -> Self {
         ServerConfig {
-            base_url: "https://webcash.org".to_string(),
+            network: NetworkMode::default(),
             timeout_seconds: 30,
         }
     }
@@ -83,7 +119,7 @@ impl ServerClient {
             request_data.push(wc.to_string());
         }
 
-        let url = format!("{}{}", self.config.base_url, endpoints::HEALTH_CHECK);
+        let url = format!("{}{}", self.config.base_url(), endpoints::HEALTH_CHECK);
         let response = self.client.post(&url).json(&request_data).send().await?;
 
         if !response.status().is_success() {
@@ -96,7 +132,7 @@ impl ServerClient {
 
     /// Submit a replacement request to the server
     pub async fn replace(&self, request: &ReplaceRequest) -> Result<ReplaceResponse> {
-        let url = format!("{}{}", self.config.base_url, endpoints::REPLACE);
+        let url = format!("{}{}", self.config.base_url(), endpoints::REPLACE);
 
         let response = self.client.post(&url).json(request).send().await?;
 
@@ -125,7 +161,7 @@ impl ServerClient {
 
     /// Get current mining target information
     pub async fn get_target(&self) -> Result<TargetResponse> {
-        let url = format!("{}{}", self.config.base_url, endpoints::TARGET);
+        let url = format!("{}{}", self.config.base_url(), endpoints::TARGET);
         let response = self.client.get(&url).send().await?;
 
         if !response.status().is_success() {
@@ -141,7 +177,7 @@ impl ServerClient {
         &self,
         report: &MiningReportRequest,
     ) -> Result<MiningReportResponse> {
-        let url = format!("{}{}", self.config.base_url, endpoints::MINING_REPORT);
+        let url = format!("{}{}", self.config.base_url(), endpoints::MINING_REPORT);
         let response = self.client.post(&url).json(report).send().await?;
 
         if !response.status().is_success() {

@@ -4,7 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::Wallet;
-use crate::biometric::{decrypt_with_password, encrypt_with_password, EncryptedData};
+use crate::passkey::{decrypt_with_password, encrypt_with_password, EncryptedData, EncryptionConfig, PasskeyEncryption};
 use crate::error::{Error, Result};
 
 impl Wallet {
@@ -28,7 +28,19 @@ impl Wallet {
             .map_err(|e| Error::wallet(format!("Failed to read encrypted database: {}", e)))?;
         let encrypted_data: EncryptedData = serde_json::from_slice(&encrypted_bytes)
             .map_err(|e| Error::wallet(format!("Invalid encrypted database format: {}", e)))?;
-        let decrypted_bytes = decrypt_with_password(&encrypted_data, "biometric_placeholder")
+
+        let file_name = encrypted_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("default");
+        let mut passkey = PasskeyEncryption::new(EncryptionConfig {
+            app_identifier: "com.webycash.webylib".to_string(),
+            service_name: format!("WalletEncryption_{}", file_name),
+            ..EncryptionConfig::default()
+        })?;
+        let decrypted_bytes = passkey
+            .decrypt_with_passkey(&encrypted_data)
+            .await
             .map_err(|e| Error::wallet(format!("Failed to decrypt database: {}", e)))?;
         let temp_path = encrypted_path.with_extension("temp.db");
         fs::write(&temp_path, decrypted_bytes)
@@ -61,17 +73,17 @@ impl Wallet {
         Ok(())
     }
 
-    /// Encrypt the wallet database using biometric keys.
+    /// Encrypt the wallet database using passkey keys.
     pub async fn encrypt_database(&self) -> Result<()> {
         if !self.is_encrypted {
             return Err(Error::wallet("Wallet is not configured for encryption"));
         }
-        let mut biometric = self
-            .biometric_encryption
+        let mut passkey = self
+            .passkey_encryption
             .as_ref()
-            .ok_or_else(|| Error::wallet("Biometric encryption not available"))?
+            .ok_or_else(|| Error::wallet("Passkey encryption not available"))?
             .lock()
-            .map_err(|_| Error::wallet("Failed to acquire biometric lock"))?;
+            .map_err(|_| Error::wallet("Failed to acquire passkey lock"))?;
 
         let db_bytes = if let Some(temp_path) = &self.temp_db_path {
             fs::read(temp_path)
@@ -81,7 +93,7 @@ impl Wallet {
                 .map_err(|e| Error::wallet(format!("Failed to read database: {}", e)))?
         };
 
-        let encrypted_data = biometric.encrypt_with_biometrics(&db_bytes).await?;
+        let encrypted_data = passkey.encrypt_with_passkey(&db_bytes).await?;
         let encrypted_json = serde_json::to_vec_pretty(&encrypted_data)
             .map_err(|e| Error::wallet(format!("Failed to serialize encrypted data: {}", e)))?;
         fs::write(&self.path, encrypted_json)
@@ -106,46 +118,79 @@ impl Wallet {
         ))
     }
 
-    /// Encrypt the entire wallet using biometric authentication.
-    pub async fn encrypt_with_biometrics(&self) -> Result<EncryptedData> {
-        if let Some(ref biometric_mutex) = self.biometric_encryption {
-            let mut biometric = biometric_mutex
+    /// Encrypt the entire wallet using passkey authentication.
+    /// Creates a PasskeyEncryption instance on the fly if not already present.
+    pub async fn encrypt_with_passkey(&self) -> Result<EncryptedData> {
+        use crate::passkey::{PasskeyEncryption, EncryptionConfig};
+
+        let wallet_data = self.export_wallet_data().await?;
+
+        if let Some(ref passkey_mutex) = self.passkey_encryption {
+            let mut passkey = passkey_mutex
                 .lock()
-                .map_err(|_| Error::wallet("Failed to acquire biometric lock"))?;
-            let wallet_data = self.export_wallet_data().await?;
-            biometric
-                .encrypt_with_biometrics(&wallet_data)
+                .map_err(|_| Error::wallet("Failed to acquire passkey lock"))?;
+            passkey
+                .encrypt_with_passkey(&wallet_data)
                 .await
-                .map_err(|e| Error::wallet(format!("Biometric encryption failed: {}", e)))
+                .map_err(|e| Error::wallet(format!("Passkey encryption failed: {}", e)))
         } else {
-            Err(Error::wallet(
-                "Biometric encryption not enabled for this wallet",
-            ))
+            // Create passkey on the fly for one-shot encryption
+            let mut passkey = PasskeyEncryption::new(EncryptionConfig {
+                app_identifier: "com.webycash.webylib".to_string(),
+                service_name: format!(
+                    "WalletEncryption_{}",
+                    self.path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("default")
+                ),
+                ..EncryptionConfig::default()
+            })?;
+            passkey
+                .encrypt_with_passkey(&wallet_data)
+                .await
+                .map_err(|e| Error::wallet(format!("Passkey encryption failed: {}", e)))
         }
     }
 
-    /// Decrypt and restore wallet data using biometric authentication.
-    pub async fn decrypt_with_biometrics(&self, encrypted_data: &EncryptedData) -> Result<()> {
-        if let Some(ref biometric_mutex) = self.biometric_encryption {
-            let mut biometric = biometric_mutex
+    /// Decrypt and restore wallet data using passkey authentication.
+    /// Creates a PasskeyEncryption instance on the fly if not already present.
+    pub async fn decrypt_with_passkey(&self, encrypted_data: &EncryptedData) -> Result<()> {
+        use crate::passkey::{PasskeyEncryption, EncryptionConfig};
+
+        if let Some(ref passkey_mutex) = self.passkey_encryption {
+            let mut passkey = passkey_mutex
                 .lock()
-                .map_err(|_| Error::wallet("Failed to acquire biometric lock"))?;
-            let wallet_data = biometric
-                .decrypt_with_biometrics(encrypted_data)
+                .map_err(|_| Error::wallet("Failed to acquire passkey lock"))?;
+            let wallet_data = passkey
+                .decrypt_with_passkey(encrypted_data)
                 .await
-                .map_err(|e| Error::wallet(format!("Biometric decryption failed: {}", e)))?;
+                .map_err(|e| Error::wallet(format!("Passkey decryption failed: {}", e)))?;
             self.import_wallet_data(&wallet_data).await
         } else {
-            Err(Error::wallet(
-                "Biometric encryption not enabled for this wallet",
-            ))
+            let mut passkey = PasskeyEncryption::new(EncryptionConfig {
+                app_identifier: "com.webycash.webylib".to_string(),
+                service_name: format!(
+                    "WalletEncryption_{}",
+                    self.path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("default")
+                ),
+                ..EncryptionConfig::default()
+            })?;
+            let wallet_data = passkey
+                .decrypt_with_passkey(encrypted_data)
+                .await
+                .map_err(|e| Error::wallet(format!("Passkey decryption failed: {}", e)))?;
+            self.import_wallet_data(&wallet_data).await
         }
     }
 
-    /// Encrypt wallet with password (fallback when biometrics unavailable).
+    /// Encrypt wallet with password (fallback when passkeys unavailable).
     pub async fn encrypt_with_password(&self, password: &str) -> Result<EncryptedData> {
         let wallet_data = self.export_wallet_data().await?;
-        crate::biometric::encrypt_with_password(&wallet_data, password)
+        crate::passkey::encrypt_with_password(&wallet_data, password)
     }
 
     /// Decrypt wallet with password.
@@ -154,22 +199,22 @@ impl Wallet {
         encrypted_data: &EncryptedData,
         password: &str,
     ) -> Result<()> {
-        let wallet_data = crate::biometric::decrypt_with_password(encrypted_data, password)?;
+        let wallet_data = crate::passkey::decrypt_with_password(encrypted_data, password)?;
         self.import_wallet_data(&wallet_data).await
     }
 
-    /// Check if biometric encryption is enabled for this wallet.
-    pub fn is_biometric_enabled(&self) -> bool {
-        self.biometric_encryption.is_some()
+    /// Check if passkey encryption is enabled for this wallet.
+    pub fn is_passkey_enabled(&self) -> bool {
+        self.passkey_encryption.is_some()
     }
 
-    /// Check if biometric authentication is available on the current device.
-    pub async fn is_biometric_available(&self) -> Result<bool> {
-        if let Some(ref biometric_mutex) = self.biometric_encryption {
-            let biometric = biometric_mutex
+    /// Check if passkey authentication is available on the current device.
+    pub async fn is_passkey_available(&self) -> Result<bool> {
+        if let Some(ref passkey_mutex) = self.passkey_encryption {
+            let passkey = passkey_mutex
                 .lock()
-                .map_err(|_| Error::wallet("Failed to acquire biometric lock"))?;
-            biometric.is_biometric_available().await
+                .map_err(|_| Error::wallet("Failed to acquire passkey lock"))?;
+            passkey.is_passkey_available().await
         } else {
             Ok(false)
         }

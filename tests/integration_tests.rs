@@ -6,7 +6,7 @@
 //! - CLI manual workflow tests
 //! - Money preservation tests
 //! - Phase 2 verification tests
-//! - Biometric encryption tests
+//! - Passkey encryption tests
 //! - Runtime encryption tests
 //!
 //! These tests require TEST_WEBCASH_SECRET environment variable to be set
@@ -22,7 +22,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tempfile::{tempdir, TempDir};
 use tokio::task;
-use webylib::biometric::EncryptedData;
+use webylib::passkey::EncryptedData;
 use webylib::*;
 
 // ============================================================================
@@ -122,7 +122,7 @@ async fn test_wallet_operations_offline() {
     )
     .unwrap();
     wallet
-        .insert_with_validation(test_webcash.clone(), false)
+        .store_directly(test_webcash.clone())
         .await
         .unwrap();
 
@@ -856,7 +856,7 @@ async fn test_phase2_all_operations() {
     let _ = fs::remove_file(wallet_path);
 }
 // ============================================================================
-// Biometric Encryption Tests
+// Passkey Encryption Tests
 // ============================================================================
 
 async fn create_test_wallet(temp_dir: &TempDir, wallet_name: &str) -> (Wallet, PathBuf) {
@@ -868,13 +868,13 @@ async fn create_test_wallet(temp_dir: &TempDir, wallet_name: &str) -> (Wallet, P
     (wallet, wallet_path)
 }
 
-async fn create_biometric_wallet(temp_dir: &TempDir, wallet_name: &str) -> (Wallet, PathBuf) {
+async fn create_passkey_wallet(temp_dir: &TempDir, wallet_name: &str) -> (Wallet, PathBuf) {
     let wallet_path = temp_dir
         .path()
-        .join(format!("{}_biometric.db", wallet_name));
-    let wallet = Wallet::open_with_biometric(&wallet_path, true)
+        .join(format!("{}_passkey.db", wallet_name));
+    let wallet = Wallet::open_with_passkey(&wallet_path, true)
         .await
-        .expect("Should create biometric wallet");
+        .expect("Should create passkey wallet");
 
     (wallet, wallet_path)
 }
@@ -915,7 +915,7 @@ async fn test_wallet_encryption_basic_workflow() {
         .await
         .expect("Should encrypt wallet");
 
-    assert_eq!(encrypted_data.algorithm, "XOR-PBKDF2");
+    assert_eq!(encrypted_data.algorithm, "AES-256-GCM-PASSWORD");
     assert!(!encrypted_data.ciphertext.is_empty());
 
     let (new_wallet, _new_path) = create_test_wallet(&temp_dir, "restored").await;
@@ -936,40 +936,40 @@ async fn test_wallet_encryption_basic_workflow() {
     );
 }
 
-/// Test biometric wallet creation and basic operations
+/// Test passkey wallet creation and basic operations
 #[tokio::test]
-async fn test_biometric_wallet_creation() {
+async fn test_passkey_wallet_creation() {
     let temp_dir = TempDir::new().expect("Should create temp dir");
-    let (wallet, _wallet_path) = create_biometric_wallet(&temp_dir, "biometric_test").await;
+    let (wallet, _wallet_path) = create_passkey_wallet(&temp_dir, "passkey_test").await;
 
     assert!(
-        wallet.is_biometric_enabled(),
-        "Biometric encryption should be enabled"
+        wallet.is_passkey_enabled(),
+        "Passkey encryption should be enabled"
     );
 
-    let available = wallet.is_biometric_available().await;
+    let available = wallet.is_passkey_available().await;
     assert!(
         available.is_ok(),
-        "Biometric availability check should not error"
+        "Passkey availability check should not error"
     );
 
     populate_wallet_with_test_data(&wallet)
         .await
-        .expect("Should populate biometric wallet");
+        .expect("Should populate passkey wallet");
 
     let balance = wallet
         .balance()
         .await
-        .expect("Should get balance from biometric wallet");
+        .expect("Should get balance from passkey wallet");
 
     assert!(!balance.is_empty(), "Balance should not be empty");
 }
 
-/// Test biometric encryption (using placeholder implementation)
+/// Test passkey encryption (using placeholder implementation)
 #[tokio::test]
-async fn test_biometric_wallet_encryption() {
+async fn test_passkey_wallet_encryption() {
     let temp_dir = TempDir::new().expect("Should create temp dir");
-    let (wallet, _wallet_path) = create_biometric_wallet(&temp_dir, "biometric_encrypt").await;
+    let (wallet, _wallet_path) = create_passkey_wallet(&temp_dir, "passkey_encrypt").await;
 
     populate_wallet_with_test_data(&wallet)
         .await
@@ -978,18 +978,25 @@ async fn test_biometric_wallet_encryption() {
     let initial_balance = wallet.balance().await.expect("Should get initial balance");
 
     let encrypted_data = wallet
-        .encrypt_with_biometrics()
+        .encrypt_with_passkey()
         .await
-        .expect("Should encrypt with biometrics");
+        .expect("Should encrypt with passkey");
 
-    assert_eq!(encrypted_data.algorithm, "XOR-PBKDF2");
+    assert_eq!(encrypted_data.algorithm, "AES-256-GCM");
 
-    let (new_wallet, _new_path) = create_biometric_wallet(&temp_dir, "biometric_restored").await;
+    // Create a fresh wallet with the same filename (same keyring service name) in a
+    // separate subdirectory so it starts empty but shares the passkey identity.
+    let restore_dir = temp_dir.path().join("restore");
+    fs::create_dir_all(&restore_dir).expect("Should create restore subdir");
+    let restore_path = restore_dir.join("passkey_encrypt_passkey.db");
+    let new_wallet = Wallet::open_with_passkey(&restore_path, true)
+        .await
+        .expect("Should create restore wallet with matching passkey identity");
 
     new_wallet
-        .decrypt_with_biometrics(&encrypted_data)
+        .decrypt_with_passkey(&encrypted_data)
         .await
-        .expect("Should decrypt with biometrics");
+        .expect("Should decrypt with passkey");
 
     let restored_balance = new_wallet
         .balance()
@@ -1056,7 +1063,7 @@ async fn test_cross_wallet_migration() {
         .await
         .expect("Should populate source wallet");
 
-    let (dest_wallet, _dest_path) = create_biometric_wallet(&temp_dir, "destination").await;
+    let (dest_wallet, _dest_path) = create_passkey_wallet(&temp_dir, "destination").await;
 
     let source_balance = source_wallet
         .balance()
@@ -1084,8 +1091,8 @@ async fn test_cross_wallet_migration() {
         "Migration should preserve balance"
     );
     assert!(
-        dest_wallet.is_biometric_enabled(),
-        "Destination should have biometric enabled"
+        dest_wallet.is_passkey_enabled(),
+        "Destination should have passkey enabled"
     );
 }
 
@@ -1279,9 +1286,9 @@ async fn test_runtime_database_encryption_workflow() {
     let temp_dir = tempdir().expect("Failed to create temp directory");
     let wallet_path = temp_dir.path().join("runtime_encrypted_wallet.db");
 
-    let wallet = Wallet::open_with_biometric(&wallet_path, true)
+    let wallet = Wallet::open_with_passkey(&wallet_path, true)
         .await
-        .expect("Failed to create wallet with biometric encryption");
+        .expect("Failed to create wallet with passkey encryption");
 
     assert!(!Wallet::is_database_encrypted(&wallet_path).unwrap());
 
@@ -1314,7 +1321,7 @@ async fn test_runtime_database_encryption_workflow() {
     let _encrypted_data: EncryptedData = serde_json::from_slice(&file_contents)
         .expect("Encrypted database should be valid EncryptedData JSON");
 
-    let wallet2 = Wallet::open_with_biometric(&wallet_path, true)
+    let wallet2 = Wallet::open_with_passkey(&wallet_path, true)
         .await
         .expect("Failed to open encrypted wallet");
 
@@ -1339,7 +1346,7 @@ async fn test_runtime_database_encryption_workflow() {
     assert!(Wallet::is_database_encrypted(&wallet_path).unwrap());
 }
 
-/// Test that non-biometric wallets are not affected
+/// Test that non-passkey wallets are not affected
 #[tokio::test]
 async fn test_regular_wallet_unaffected() {
     let temp_dir = tempdir().expect("Failed to create temp directory");
@@ -1386,14 +1393,14 @@ async fn test_regular_wallet_unaffected() {
     assert_eq!(balance, restored_balance);
 }
 
-/// Test opening encrypted wallet without biometric flag fails
+/// Test opening encrypted wallet without passkey flag fails
 #[tokio::test]
-async fn test_encrypted_wallet_requires_biometric_flag() {
+async fn test_encrypted_wallet_requires_passkey_flag() {
     let temp_dir = tempdir().expect("Failed to create temp directory");
     let wallet_path = temp_dir.path().join("encrypted_for_flag_test.db");
 
     {
-        let wallet = Wallet::open_with_biometric(&wallet_path, true)
+        let wallet = Wallet::open_with_passkey(&wallet_path, true)
             .await
             .expect("Failed to create encrypted wallet");
 
@@ -1418,9 +1425,9 @@ async fn test_encrypted_wallet_requires_biometric_flag() {
     let result = Wallet::open(&wallet_path).await;
     assert!(result.is_err());
 
-    let wallet = Wallet::open_with_biometric(&wallet_path, true)
+    let wallet = Wallet::open_with_passkey(&wallet_path, true)
         .await
-        .expect("Failed to open with correct biometric flag");
+        .expect("Failed to open with correct passkey flag");
 
     let balance = wallet
         .balance_amount()
@@ -1436,7 +1443,7 @@ async fn test_corrupted_encrypted_database_handling() {
     let wallet_path = temp_dir.path().join("corrupted_test.db");
 
     {
-        let wallet = Wallet::open_with_biometric(&wallet_path, true)
+        let wallet = Wallet::open_with_passkey(&wallet_path, true)
             .await
             .expect("Failed to create wallet");
         wallet.close().await.expect("Failed to close wallet");
@@ -1444,7 +1451,7 @@ async fn test_corrupted_encrypted_database_handling() {
 
     fs::write(&wallet_path, b"corrupted json data").expect("Failed to corrupt database");
 
-    let result = Wallet::open_with_biometric(&wallet_path, true).await;
+    let result = Wallet::open_with_passkey(&wallet_path, true).await;
     assert!(result.is_err());
 }
 
@@ -1461,7 +1468,7 @@ async fn test_multiple_encryption_cycles() {
 
     for cycle in 1..=3 {
         let wallet = if cycle == 1 {
-            let w = Wallet::open_with_biometric(&wallet_path, true)
+            let w = Wallet::open_with_passkey(&wallet_path, true)
                 .await
                 .expect("Failed to create wallet");
             w.store_directly(initial_webcash.clone())
@@ -1469,7 +1476,7 @@ async fn test_multiple_encryption_cycles() {
                 .expect("Failed to store initial webcash");
             w
         } else {
-            Wallet::open_with_biometric(&wallet_path, true)
+            Wallet::open_with_passkey(&wallet_path, true)
                 .await
                 .unwrap_or_else(|_| panic!("Failed to open wallet in cycle {}", cycle))
         };
@@ -1500,7 +1507,7 @@ async fn test_multiple_encryption_cycles() {
         assert!(Wallet::is_database_encrypted(&wallet_path).unwrap());
     }
 
-    let final_wallet = Wallet::open_with_biometric(&wallet_path, true)
+    let final_wallet = Wallet::open_with_passkey(&wallet_path, true)
         .await
         .expect("Failed to open wallet for final verification");
 

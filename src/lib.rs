@@ -7,7 +7,7 @@
 //!
 //! - Deterministic HD wallet (BIP32-style 4-chain derivation)
 //! - SQLite storage with WAL mode for crash safety
-//! - Biometric and password-based encryption (Argon2 + AES-256-GCM)
+//! - Passkey and password-based encryption (Argon2 + AES-256-GCM)
 //! - Full server client (health check, replace, mining)
 //! - Zeroize-on-drop for all secret material
 //!
@@ -26,7 +26,7 @@
 //! ```
 
 pub mod amount;
-pub mod biometric;
+pub mod passkey;
 pub mod crypto;
 pub mod error;
 #[cfg(feature = "ffi")]
@@ -42,6 +42,9 @@ pub use amount::Amount;
 pub use error::{Error, Result};
 pub use hd::ChainCode;
 pub use protocol::{TERMS_OF_SERVICE, VERSION};
+pub mod miner;
+
 pub use server::endpoints;
+pub use server::NetworkMode;
 pub use wallet::{Wallet, WalletSnapshot, WalletStats};
 pub use webcash::{PublicWebcash, SecretWebcash};
