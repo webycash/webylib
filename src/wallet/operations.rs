@@ -1,4 +1,8 @@
 //! Core wallet operations: insert, pay, merge, recover, check, balance.
+//!
+//! All operations that modify wallet state after a server call use SQLite
+//! transactions for atomicity.  Crash recovery relies on HD determinism:
+//! `recover` re-derives every chain and finds any outputs the server holds.
 
 use std::str::FromStr;
 
@@ -120,6 +124,30 @@ impl Wallet {
         log::info!("Master secret stored in wallet for recovery purposes");
         Ok(())
     }
+
+    /// Read the current depth for a chain code from walletdepths.
+    fn read_chain_depth(&self, chain_name: &str) -> Result<u64> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| Error::wallet("Failed to acquire database lock"))?;
+        let d: i64 = connection
+            .query_row(
+                "SELECT depth FROM walletdepths WHERE chain_code = ?1",
+                params![chain_name],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or(0);
+        Ok(d as u64)
+    }
+
+    /// Build an HDWallet from the stored master secret.
+    fn hd_wallet(&self) -> Result<HDWallet> {
+        let hex = self.get_master_secret()?;
+        let arr = self.validate_master_secret(&hex)?;
+        Ok(HDWallet::from_master_secret(arr))
+    }
 }
 
 // ── Balance & listing ───────────────────────────────────────────────
@@ -237,6 +265,10 @@ impl Wallet {
     }
 
     /// Insert webcash with optional pre-validation against server.
+    ///
+    /// Matches the Python reference: derives a new RECEIVE-chain secret,
+    /// performs a server `/replace` to transfer ownership, then atomically
+    /// stores the new output and increments the RECEIVE depth.
     pub async fn insert_with_validation(
         &self,
         webcash: SecretWebcash,
@@ -244,21 +276,10 @@ impl Wallet {
     ) -> Result<()> {
         log::debug!("Starting webcash insertion with ownership transfer");
 
-        let master_secret_hex = self.get_master_secret()?;
-        let master_secret_array = self.validate_master_secret(&master_secret_hex)?;
-        let hd_wallet = HDWallet::from_master_secret(master_secret_array);
+        let hd_wallet = self.hd_wallet()?;
 
-        // Get next depth for RECEIVE chain
-        let depth = {
-            let connection = self
-                .connection
-                .lock()
-                .map_err(|_| Error::wallet("Failed to acquire database lock"))?;
-            let d: Option<i64> = connection
-                .query_row("SELECT COUNT(*) FROM unspent_outputs", [], |row| row.get(0))
-                .optional()?;
-            d.unwrap_or(0) as u64
-        };
+        // Read RECEIVE depth from walletdepths (matches Python generate_new_secret)
+        let depth = self.read_chain_depth("RECEIVE")?;
 
         let new_secret_hex = hd_wallet
             .derive_secret(crate::hd::ChainCode::Receive, depth)
@@ -266,12 +287,10 @@ impl Wallet {
 
         let new_webcash = SecretWebcash::new(SecureString::new(new_secret_hex), webcash.amount);
 
-        // Optional pre-validation
         if validate_with_server {
             self.validate_input_webcash(&webcash).await?;
         }
 
-        // Perform server replacement to transfer ownership
         let replace_request = ReplaceRequest {
             webcashes: vec![webcash.to_string()],
             new_webcashes: vec![new_webcash.to_string()],
@@ -287,27 +306,35 @@ impl Wallet {
             Ok(resp) if resp.status == "success" => {
                 drop(server);
                 log::info!("Server replacement successful — ownership transferred");
-                // Store the NEW webcash (not the original)
-                let connection = self
+                // Atomically: store output + increment RECEIVE depth
+                let mut connection = self
                     .connection
                     .lock()
                     .map_err(|_| Error::wallet("Failed to acquire database lock"))?;
+                let tx = connection.transaction()?;
                 let new_secret_str = new_webcash
                     .secret
                     .as_str()
                     .map_err(|_| Error::wallet("Invalid new secret encoding"))?;
                 let new_secret_hash = crate::crypto::sha256(new_secret_str.as_bytes());
-                connection.execute(
+                tx.execute(
                     "INSERT INTO unspent_outputs (secret_hash, secret, amount, spent) VALUES (?1, ?2, ?3, 0)",
                     params![&new_secret_hash[..], new_secret_str, new_webcash.amount.wats],
                 )?;
-                log::info!("Inserted amount: {}", new_webcash.amount);
+                tx.execute(
+                    "INSERT INTO walletdepths (chain_code, depth) VALUES ('RECEIVE', ?1)
+                     ON CONFLICT(chain_code) DO UPDATE SET depth = excluded.depth",
+                    params![(depth + 1) as i64],
+                )?;
+                tx.commit()?;
+                log::info!("Inserted webcash at RECEIVE/{}", depth);
                 Ok(())
             }
             Err(Error::Server { ref message })
                 if message.contains("can only be replaced by itself") =>
             {
-                // Same-lineage token — validate unspent then store directly
+                // Same-lineage token — validate unspent then store directly.
+                // No RECEIVE depth increment: no HD derivation used.
                 log::info!("Same-lineage token detected, storing directly without replace");
                 let public_webcash = webcash.to_public();
                 let health_response = server
@@ -374,12 +401,14 @@ impl Wallet {
 impl Wallet {
     /// Pay amount using server-validated transaction.
     /// Returns the payment webcash string for the recipient.
+    ///
+    /// Matches the Python reference: derives PAY + CHANGE secrets, performs
+    /// server `/replace`, then atomically updates local DB (mark spent, store
+    /// change, increment depths) in a single transaction.
     pub async fn pay(&self, amount: Amount, memo: &str) -> Result<String> {
         log::info!("Starting payment: amount={}, memo={}", amount, memo);
 
-        let master_secret_hex = self.get_master_secret()?;
-        let master_secret_array = self.validate_master_secret(&master_secret_hex)?;
-        let hd_wallet = HDWallet::from_master_secret(master_secret_array);
+        let hd_wallet = self.hd_wallet()?;
 
         let inputs = self.select_inputs(amount).await?;
         if inputs.is_empty() {
@@ -389,48 +418,18 @@ impl Wallet {
         let input_total: Amount = inputs.iter().fold(Amount::ZERO, |acc, wc| acc + wc.amount);
         let change_amount = input_total - amount;
 
-        // Get and increment depths atomically
-        let (pay_depth, change_depth) = {
-            let connection = self
-                .connection
-                .lock()
-                .map_err(|_| Error::wallet("Failed to acquire database lock"))?;
-            let pay_depth: u64 = connection
-                .query_row(
-                    "SELECT depth FROM walletdepths WHERE chain_code = 'PAY'",
-                    [],
-                    |row| row.get::<_, i64>(0),
-                )
-                .optional()?
-                .unwrap_or(0) as u64;
-            connection.execute(
-                "UPDATE walletdepths SET depth = ? WHERE chain_code = 'PAY'",
-                params![(pay_depth + 1) as i64],
-            )?;
+        // Read depths before server call (do NOT increment yet)
+        let pay_depth = self.read_chain_depth("PAY")?;
+        let change_depth = self.read_chain_depth("CHANGE")?;
 
-            let change_depth: u64 = connection
-                .query_row(
-                    "SELECT depth FROM walletdepths WHERE chain_code = 'CHANGE'",
-                    [],
-                    |row| row.get::<_, i64>(0),
-                )
-                .optional()?
-                .unwrap_or(0) as u64;
-            connection.execute(
-                "UPDATE walletdepths SET depth = ? WHERE chain_code = 'CHANGE'",
-                params![(change_depth + 1) as i64],
-            )?;
-            (pay_depth, change_depth)
-        };
-
-        // Generate payment output
+        // Generate payment output (PAY chain)
         let pay_secret = hd_wallet
             .derive_secret(crate::hd::ChainCode::Pay, pay_depth)
             .map_err(|e| Error::crypto(format!("Failed to generate payment secret: {}", e)))?;
         let payment_webcash = SecretWebcash::new(SecureString::new(pay_secret), amount);
         let mut new_webcashes = vec![payment_webcash.to_string()];
 
-        // Generate change output if needed
+        // Generate change output (CHANGE chain) if needed
         let change_webcash = if change_amount > Amount::ZERO {
             let change_secret = hd_wallet
                 .derive_secret(crate::hd::ChainCode::Change, change_depth)
@@ -461,11 +460,57 @@ impl Wallet {
             ));
         }
 
-        self.mark_inputs_spent(&inputs).await?;
+        // Server accepted — atomically update local DB
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| Error::wallet("Failed to acquire database lock"))?;
+        let tx = connection.transaction()?;
 
-        if let Some(cw) = change_webcash {
-            self.store_directly(cw).await?;
+        // Mark inputs as spent
+        for input in &inputs {
+            let secret_str = input.secret.as_str().unwrap_or("");
+            let secret_hash = crate::crypto::sha256(secret_str.as_bytes());
+            tx.execute(
+                "UPDATE unspent_outputs SET spent = 1 WHERE secret_hash = ?1",
+                params![&secret_hash[..]],
+            )?;
+            tx.execute(
+                "INSERT OR IGNORE INTO spent_hashes (hash) VALUES (?1)",
+                params![&secret_hash[..]],
+            )?;
         }
+
+        // Store change output
+        if let Some(ref cw) = change_webcash {
+            let change_secret_str = cw
+                .secret
+                .as_str()
+                .map_err(|_| Error::wallet("Invalid change secret encoding"))?;
+            let change_hash = crate::crypto::sha256(change_secret_str.as_bytes());
+            tx.execute(
+                "INSERT INTO unspent_outputs (secret_hash, secret, amount, spent) VALUES (?1, ?2, ?3, 0)",
+                params![&change_hash[..], change_secret_str, cw.amount.wats],
+            )?;
+        }
+
+        // Increment PAY depth (always)
+        tx.execute(
+            "INSERT INTO walletdepths (chain_code, depth) VALUES ('PAY', ?1)
+             ON CONFLICT(chain_code) DO UPDATE SET depth = excluded.depth",
+            params![(pay_depth + 1) as i64],
+        )?;
+
+        // Increment CHANGE depth only when a change output was derived
+        if change_webcash.is_some() {
+            tx.execute(
+                "INSERT INTO walletdepths (chain_code, depth) VALUES ('CHANGE', ?1)
+                 ON CONFLICT(chain_code) DO UPDATE SET depth = excluded.depth",
+                params![(change_depth + 1) as i64],
+            )?;
+        }
+
+        tx.commit()?;
 
         Ok(format!(
             "Payment completed! Send this webcash to recipient: {}",
@@ -504,24 +549,26 @@ impl Wallet {
         Ok(selected)
     }
 
-    /// Mark inputs as spent in the wallet.
+    /// Mark inputs as spent in the wallet (transactional).
     pub async fn mark_inputs_spent(&self, inputs: &[SecretWebcash]) -> Result<()> {
-        let connection = self
+        let mut connection = self
             .connection
             .lock()
             .map_err(|_| Error::wallet("Failed to acquire database lock"))?;
+        let tx = connection.transaction()?;
         for input in inputs {
             let secret_str = input.secret.as_str().unwrap_or("");
             let secret_hash = crate::crypto::sha256(secret_str.as_bytes());
-            connection.execute(
+            tx.execute(
                 "UPDATE unspent_outputs SET spent = 1 WHERE secret_hash = ?1",
                 params![&secret_hash[..]],
             )?;
-            connection.execute(
+            tx.execute(
                 "INSERT OR IGNORE INTO spent_hashes (hash) VALUES (?1)",
                 params![&secret_hash[..]],
             )?;
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -597,6 +644,10 @@ impl Wallet {
 
 impl Wallet {
     /// Merge small outputs to reduce wallet fragmentation.
+    ///
+    /// Matches the Python reference: uses CHANGE chain code for the merged
+    /// output (HD-recoverable), performs a single server `/replace`, then
+    /// atomically updates local DB.
     pub async fn merge(&self, max_outputs: usize) -> Result<String> {
         log::info!("Starting output consolidation");
 
@@ -619,13 +670,17 @@ impl Wallet {
             .iter()
             .fold(Amount::ZERO, |acc, wc| acc + wc.amount);
 
-        let consolidated_secret = crate::crypto::CryptoSecret::generate()
-            .map_err(|e| Error::crypto(format!("Failed to generate consolidated secret: {}", e)))?;
-        let consolidated_webcash = SecretWebcash::new(
-            SecureString::new(consolidated_secret.to_hex()),
-            total_amount,
-        );
+        // Read CHANGE depth (do NOT increment yet — wait for server success)
+        let hd_wallet = self.hd_wallet()?;
+        let change_depth = self.read_chain_depth("CHANGE")?;
 
+        let change_secret_hex = hd_wallet
+            .derive_secret(crate::hd::ChainCode::Change, change_depth)
+            .map_err(|e| Error::crypto(format!("Failed to generate change secret: {}", e)))?;
+        let consolidated_webcash =
+            SecretWebcash::new(SecureString::new(change_secret_hex), total_amount);
+
+        // Single server replace (inputs -> change-derived output)
         let replace_request = ReplaceRequest {
             webcashes: webcash_to_merge.iter().map(|wc| wc.to_string()).collect(),
             new_webcashes: vec![consolidated_webcash.to_string()],
@@ -643,8 +698,51 @@ impl Wallet {
             return Err(Error::server("Consolidation transaction failed"));
         }
 
-        self.mark_inputs_spent(webcash_to_merge).await?;
-        self.insert(consolidated_webcash).await?;
+        // Server accepted — atomically update local DB
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| Error::wallet("Failed to acquire database lock"))?;
+        let tx = connection.transaction()?;
+
+        for input in webcash_to_merge {
+            let secret_str = input.secret.as_str().unwrap_or("");
+            let secret_hash = crate::crypto::sha256(secret_str.as_bytes());
+            tx.execute(
+                "UPDATE unspent_outputs SET spent = 1 WHERE secret_hash = ?1",
+                params![&secret_hash[..]],
+            )?;
+            tx.execute(
+                "INSERT OR IGNORE INTO spent_hashes (hash) VALUES (?1)",
+                params![&secret_hash[..]],
+            )?;
+        }
+
+        let consolidated_secret_str = consolidated_webcash
+            .secret
+            .as_str()
+            .map_err(|_| Error::wallet("Invalid consolidated secret encoding"))?;
+        let consolidated_hash = crate::crypto::sha256(consolidated_secret_str.as_bytes());
+        tx.execute(
+            "INSERT INTO unspent_outputs (secret_hash, secret, amount, spent) VALUES (?1, ?2, ?3, 0)",
+            params![&consolidated_hash[..], consolidated_secret_str, consolidated_webcash.amount.wats],
+        )?;
+
+        // Increment CHANGE depth
+        tx.execute(
+            "INSERT INTO walletdepths (chain_code, depth) VALUES ('CHANGE', ?1)
+             ON CONFLICT(chain_code) DO UPDATE SET depth = excluded.depth",
+            params![(change_depth + 1) as i64],
+        )?;
+
+        tx.commit()?;
+
+        log::info!(
+            "Consolidation completed: {} outputs merged at CHANGE/{}, total {} preserved",
+            webcash_to_merge.len(),
+            change_depth,
+            total_amount
+        );
 
         Ok(format!(
             "Consolidation completed: {} outputs merged, total {} preserved",
@@ -692,8 +790,7 @@ impl Wallet {
         use crate::hd::ChainCode;
 
         log::info!(
-            "Starting wallet recovery, master_secret={}..., gap_limit={}",
-            &master_secret_hex[..8],
+            "Starting wallet recovery with gap_limit={}",
             gap_limit
         );
 
@@ -896,13 +993,15 @@ impl Wallet {
             crate::hd::ChainCode::Mining => "MINING",
         };
 
-        let connection = self
+        let mut connection = self
             .connection
             .lock()
             .map_err(|_| Error::wallet("Failed to acquire database lock"))?;
 
+        let tx = connection.transaction()?;
+
         // Get current depth (or 0 if not set)
-        let depth: i64 = connection
+        let depth: i64 = tx
             .query_row(
                 "SELECT depth FROM walletdepths WHERE chain_code = ?",
                 params![chain_name],
@@ -919,11 +1018,13 @@ impl Wallet {
             .map_err(|e| Error::crypto(format!("HD derivation failed: {}", e)))?;
 
         // Increment depth
-        connection.execute(
+        tx.execute(
             "INSERT INTO walletdepths (chain_code, depth) VALUES (?, ?)
              ON CONFLICT(chain_code) DO UPDATE SET depth = excluded.depth",
             params![chain_name, depth + 1],
         )?;
+
+        tx.commit()?;
 
         Ok((secret_hex, depth_u64))
     }

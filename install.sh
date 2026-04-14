@@ -38,6 +38,9 @@ rm -rf "$TARBALL" "${TARBALL}.sha256" "webylib-${VERSION}-${PLATFORM}"
 
 echo "Installed webyc to ${PREFIX}/bin/webyc"
 
+mkdir -p "$HOME/.webyc"
+echo "Created default wallet directory: $HOME/.webyc"
+
 case ":$PATH:" in
     *":${PREFIX}/bin:"*) ;;
     *) echo "Add ${PREFIX}/bin to your PATH: export PATH=\"${PREFIX}/bin:\$PATH\"" ;;

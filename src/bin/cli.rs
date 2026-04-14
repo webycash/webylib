@@ -17,9 +17,9 @@ enum Network {
 #[command(about = "Webcash wallet command line interface")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 struct Cli {
-    /// Wallet database file path
-    #[arg(short, long, default_value = "wallet.db")]
-    wallet: PathBuf,
+    /// Wallet database file path [default: ~/.webyc/wallet.db]
+    #[arg(short, long)]
+    wallet: Option<PathBuf>,
 
     /// Enable passkey authentication for encrypted wallets
     #[arg(long)]
@@ -141,11 +141,21 @@ async fn open_wallet_at(
     Ok(wallet)
 }
 
+fn default_wallet_path() -> PathBuf {
+    match dirs_next::home_dir() {
+        Some(home) => home.join(".webyc").join("wallet.db"),
+        None => {
+            eprintln!("Cannot determine home directory. Use --wallet to specify a path.");
+            std::process::exit(1);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let network = resolve_network(&cli);
-    let wallet_path = cli.wallet.clone();
+    let wallet_path = cli.wallet.clone().unwrap_or_else(default_wallet_path);
     println!("Network: {:?}", network);
 
     // Helper: open wallet with the resolved network for any command

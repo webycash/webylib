@@ -26,6 +26,10 @@ Remove-Item $Tarball, "$Tarball.sha256", "webylib-$Version-$Platform" -Recurse -
 
 Write-Host "Installed webyc.exe to $Prefix\bin\webyc.exe"
 
+$WebyDir = "$env:USERPROFILE\.webyc"
+New-Item -ItemType Directory -Force -Path $WebyDir | Out-Null
+Write-Host "Created default wallet directory: $WebyDir"
+
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($UserPath -notlike "*$Prefix\bin*") {
     Write-Host "Add $Prefix\bin to your PATH"

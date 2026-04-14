@@ -1,6 +1,6 @@
 [package]
 name = "webylib"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 rust-version = "1.85"
 description = "Webcash HD wallet library — bearer e-cash with BIP32-style key derivation, SQLite storage, AES-256-GCM encryption, and full C FFI for cross-platform SDKs"
@@ -62,6 +62,7 @@ reqwest = { version = "0.11", default-features = false, features = ["json", "rus
 # CLI (optional — not needed by library consumers)
 clap = { version = "4.0", features = ["derive"], optional = true }
 rpassword = { version = "7.3", optional = true }
+dirs-next = { version = "2", optional = true }
 
 # Utilities
 hex = "0.4"
@@ -86,7 +87,7 @@ mockito = "1.7.0"
 default = ["bundled-sqlite", "cli"]
 bundled-sqlite = ["rusqlite/bundled"]
 ffi = []
-cli = ["dep:clap", "dep:rpassword"]
+cli = ["dep:clap", "dep:rpassword", "dep:dirs-next"]
 passkey = []
 
 [package.metadata.docs.rs]

@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-04-14
+
+### Fixed
+- **insert depth tracking**: `insert_with_validation` now reads RECEIVE depth
+  from `walletdepths` table instead of counting rows in `unspent_outputs`.
+  The old query returned wrong depths after pay/merge/spend operations, which
+  could cause HD-derived secrets to collide or skip indices.
+- **insert depth increment**: RECEIVE depth is now incremented after successful
+  insert, matching the Python reference wallet behavior.
+- **merge uses CHANGE chain**: `merge()` now derives output secrets from the
+  CHANGE chain code (HD-recoverable) instead of generating random secrets.
+  Single server replace instead of the previous double-replace pattern.
+- **depth increment after server**: All operations (insert, pay, merge) now
+  read depths before the server call and increment only after server success,
+  inside a single SQLite transaction.  No depth is burned on server failure.
+- **pay/merge atomicity**: Post-server DB updates (mark spent, store change,
+  increment depths) are now wrapped in SQLite transactions via
+  `connection.transaction()`.
+- **mark_inputs_spent atomicity**: Wrapped in transaction to prevent
+  partial spent state.
+- **derive_next_secret atomicity**: Read + increment wrapped in a transaction.
+
+### Changed
+- Default wallet path changed from `./wallet.db` to `~/.webyc/wallet.db`
+- Added `dirs-next` dependency (CLI feature only) for cross-platform home directory
+- Install scripts now create `~/.webyc/` default wallet directory
+
 ## [0.2.1] - 2026-04-14
 
 ### Changed
