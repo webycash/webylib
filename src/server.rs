@@ -23,9 +23,10 @@ pub mod endpoints {
 
 /// Network mode selection — the single source of truth for which server
 /// the wallet communicates with. Each Wallet instance owns its network mode.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum NetworkMode {
     /// Production webcash.org server.
+    #[default]
     Production,
     /// Webycash testnet at weby.cash.
     Testnet,
@@ -41,12 +42,6 @@ impl NetworkMode {
             NetworkMode::Testnet => "https://weby.cash/api/webcash/testnet",
             NetworkMode::Custom(url) => url.as_str(),
         }
-    }
-}
-
-impl Default for NetworkMode {
-    fn default() -> Self {
-        NetworkMode::Production
     }
 }
 
