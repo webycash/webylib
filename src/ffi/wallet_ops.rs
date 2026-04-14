@@ -52,7 +52,10 @@ pub unsafe extern "C" fn weby_wallet_open(
     let result = rt.block_on(Wallet::open(path_str));
     let code = result_to_code(&result);
     if let Ok(wallet) = result {
-        let handle = Box::new(WebyWallet { wallet, runtime: rt });
+        let handle = Box::new(WebyWallet {
+            wallet,
+            runtime: rt,
+        });
         unsafe { *out_wallet = Box::into_raw(handle) };
     }
     code
@@ -95,7 +98,10 @@ pub unsafe extern "C" fn weby_wallet_open_with_seed(
     let result = rt.block_on(Wallet::open_with_seed(path_str, &seed));
     let code = result_to_code(&result);
     if let Ok(wallet) = result {
-        let handle = Box::new(WebyWallet { wallet, runtime: rt });
+        let handle = Box::new(WebyWallet {
+            wallet,
+            runtime: rt,
+        });
         unsafe { *out_wallet = Box::into_raw(handle) };
     }
     code
@@ -384,9 +390,7 @@ pub unsafe extern "C" fn weby_wallet_encrypt_seed(
 pub extern "C" fn weby_version() -> *const c_char {
     // Use a static CStr to avoid per-call allocation
     static VERSION_CSTR: std::sync::LazyLock<std::ffi::CString> =
-        std::sync::LazyLock::new(|| {
-            std::ffi::CString::new(crate::protocol::VERSION).unwrap()
-        });
+        std::sync::LazyLock::new(|| std::ffi::CString::new(crate::protocol::VERSION).unwrap());
     VERSION_CSTR.as_ptr()
 }
 
@@ -396,10 +400,7 @@ pub extern "C" fn weby_version() -> *const c_char {
 /// - `amount_str` must be a valid null-terminated decimal string.
 /// - `out_wats` must be a valid, non-null pointer.
 #[no_mangle]
-pub unsafe extern "C" fn weby_amount_parse(
-    amount_str: *const c_char,
-    out_wats: *mut i64,
-) -> i32 {
+pub unsafe extern "C" fn weby_amount_parse(amount_str: *const c_char, out_wats: *mut i64) -> i32 {
     if out_wats.is_null() {
         set_last_error("out_wats is null");
         return WebyErrorCode::InvalidInput as i32;
@@ -428,10 +429,7 @@ pub unsafe extern "C" fn weby_amount_parse(
 /// # Safety
 /// `out_str` must be a valid, non-null pointer. Free with `weby_free_string`.
 #[no_mangle]
-pub unsafe extern "C" fn weby_amount_format(
-    wats: i64,
-    out_str: *mut *mut c_char,
-) -> i32 {
+pub unsafe extern "C" fn weby_amount_format(wats: i64, out_str: *mut *mut c_char) -> i32 {
     if out_str.is_null() {
         set_last_error("out_str is null");
         return WebyErrorCode::InvalidInput as i32;

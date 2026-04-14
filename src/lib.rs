@@ -29,13 +29,13 @@ pub mod amount;
 pub mod biometric;
 pub mod crypto;
 pub mod error;
+#[cfg(feature = "ffi")]
+pub mod ffi;
 pub mod hd;
 pub mod protocol;
 pub mod server;
 pub mod wallet;
 pub mod webcash;
-#[cfg(feature = "ffi")]
-pub mod ffi;
 
 // Re-exports — flat access to the most common types
 pub use amount::Amount;
