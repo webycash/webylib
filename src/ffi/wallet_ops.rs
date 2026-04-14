@@ -381,6 +381,212 @@ pub unsafe extern "C" fn weby_wallet_encrypt_seed(
     result_to_code(&result)
 }
 
+// ── Listing ─────────────────────────────────────────────────────────
+
+/// List all unspent webcash as a JSON array of strings.
+///
+/// Each entry is a webcash string like `"e1.00000000:secret:abcdef..."`.
+///
+/// # Safety
+/// - `wallet` must be a valid handle.
+/// - `out_json` must be a valid, non-null pointer. Free with `weby_free_string`.
+#[no_mangle]
+pub unsafe extern "C" fn weby_wallet_list_webcash(
+    wallet: *const WebyWallet,
+    out_json: *mut *mut c_char,
+) -> i32 {
+    if wallet.is_null() || out_json.is_null() {
+        set_last_error("wallet or out_json is null");
+        return WebyErrorCode::InvalidInput as i32;
+    }
+    let handle = unsafe { &*wallet };
+    let result = handle.runtime.block_on(handle.wallet.list_webcash());
+    let code = result_to_code(&result);
+    if let Ok(list) = result {
+        let strings: Vec<String> = list.iter().map(|wc| wc.to_string()).collect();
+        match serde_json::to_string(&strings) {
+            Ok(json) => unsafe { *out_json = str_to_cstring(&json) },
+            Err(e) => {
+                set_last_error(&e.to_string());
+                return WebyErrorCode::Unknown as i32;
+            }
+        }
+    }
+    code
+}
+
+// ── Master Secret ───────────────────────────────────────────────────
+
+/// Get the wallet master secret as a 64-character hex string (for backup/recovery).
+///
+/// # Safety
+/// - `wallet` must be a valid handle.
+/// - `out_hex` must be a valid, non-null pointer. Free with `weby_free_string`.
+#[no_mangle]
+pub unsafe extern "C" fn weby_wallet_master_secret(
+    wallet: *const WebyWallet,
+    out_hex: *mut *mut c_char,
+) -> i32 {
+    if wallet.is_null() || out_hex.is_null() {
+        set_last_error("wallet or out_hex is null");
+        return WebyErrorCode::InvalidInput as i32;
+    }
+    let handle = unsafe { &*wallet };
+    let result = handle.wallet.master_secret_hex();
+    let code = result_to_code(&result);
+    if let Ok(hex) = result {
+        unsafe { *out_hex = str_to_cstring(&hex) };
+    }
+    code
+}
+
+// ── Snapshot Import ─────────────────────────────────────────────────
+
+/// Import wallet state from a JSON snapshot (overwrites current state).
+///
+/// # Safety
+/// - `wallet` must be a valid handle.
+/// - `json` must be a valid null-terminated JSON string.
+#[no_mangle]
+pub unsafe extern "C" fn weby_wallet_import_snapshot(
+    wallet: *const WebyWallet,
+    json: *const c_char,
+) -> i32 {
+    if wallet.is_null() {
+        set_last_error("wallet is null");
+        return WebyErrorCode::InvalidInput as i32;
+    }
+    let json_str = match unsafe { cstr_to_str(json) } {
+        Some(s) => s,
+        None => {
+            set_last_error("json is null or invalid UTF-8");
+            return WebyErrorCode::InvalidInput as i32;
+        }
+    };
+    let snapshot: crate::wallet::WalletSnapshot = match serde_json::from_str(json_str) {
+        Ok(s) => s,
+        Err(e) => {
+            set_last_error(&format!("Invalid snapshot JSON: {}", e));
+            return WebyErrorCode::InvalidInput as i32;
+        }
+    };
+    let handle = unsafe { &*wallet };
+    let result = handle.wallet.import_snapshot(&snapshot);
+    result_to_code(&result)
+}
+
+// ── Full Wallet Encryption ──────────────────────────────────────────
+
+/// Encrypt the full wallet data with a password. Returns encrypted JSON.
+///
+/// # Safety
+/// - `wallet` must be a valid handle.
+/// - `password` must be a valid null-terminated string.
+/// - `out_json` must be a valid, non-null pointer. Free with `weby_free_string`.
+#[no_mangle]
+pub unsafe extern "C" fn weby_wallet_encrypt_with_password(
+    wallet: *const WebyWallet,
+    password: *const c_char,
+    out_json: *mut *mut c_char,
+) -> i32 {
+    if wallet.is_null() || out_json.is_null() {
+        set_last_error("wallet or out_json is null");
+        return WebyErrorCode::InvalidInput as i32;
+    }
+    let pw = match unsafe { cstr_to_str(password) } {
+        Some(s) => s,
+        None => {
+            set_last_error("password is null or invalid UTF-8");
+            return WebyErrorCode::InvalidInput as i32;
+        }
+    };
+    let handle = unsafe { &*wallet };
+    let result = handle
+        .runtime
+        .block_on(handle.wallet.encrypt_with_password(pw));
+    let code = result_to_code(&result);
+    if let Ok(encrypted) = result {
+        match serde_json::to_string(&encrypted) {
+            Ok(json) => unsafe { *out_json = str_to_cstring(&json) },
+            Err(e) => {
+                set_last_error(&e.to_string());
+                return WebyErrorCode::Unknown as i32;
+            }
+        }
+    }
+    code
+}
+
+/// Decrypt wallet data from encrypted JSON with a password.
+///
+/// # Safety
+/// - `wallet` must be a valid handle.
+/// - `encrypted_json` must be a valid null-terminated JSON string.
+/// - `password` must be a valid null-terminated string.
+#[no_mangle]
+pub unsafe extern "C" fn weby_wallet_decrypt_with_password(
+    wallet: *const WebyWallet,
+    encrypted_json: *const c_char,
+    password: *const c_char,
+) -> i32 {
+    if wallet.is_null() {
+        set_last_error("wallet is null");
+        return WebyErrorCode::InvalidInput as i32;
+    }
+    let json_str = match unsafe { cstr_to_str(encrypted_json) } {
+        Some(s) => s,
+        None => {
+            set_last_error("encrypted_json is null or invalid UTF-8");
+            return WebyErrorCode::InvalidInput as i32;
+        }
+    };
+    let pw = match unsafe { cstr_to_str(password) } {
+        Some(s) => s,
+        None => {
+            set_last_error("password is null or invalid UTF-8");
+            return WebyErrorCode::InvalidInput as i32;
+        }
+    };
+    let encrypted: crate::passkey::EncryptedData = match serde_json::from_str(json_str) {
+        Ok(e) => e,
+        Err(e) => {
+            set_last_error(&format!("Invalid encrypted JSON: {}", e));
+            return WebyErrorCode::InvalidInput as i32;
+        }
+    };
+    let handle = unsafe { &*wallet };
+    let result = handle
+        .runtime
+        .block_on(handle.wallet.decrypt_with_password(&encrypted, pw));
+    result_to_code(&result)
+}
+
+/// Recover wallet from its stored master secret (no need to pass the hex).
+///
+/// # Safety
+/// - `wallet` must be a valid handle.
+/// - `out_result` must be a valid, non-null pointer. Free with `weby_free_string`.
+#[no_mangle]
+pub unsafe extern "C" fn weby_wallet_recover_from_wallet(
+    wallet: *const WebyWallet,
+    gap_limit: u32,
+    out_result: *mut *mut c_char,
+) -> i32 {
+    if wallet.is_null() || out_result.is_null() {
+        set_last_error("wallet or out_result is null");
+        return WebyErrorCode::InvalidInput as i32;
+    }
+    let handle = unsafe { &*wallet };
+    let result = handle
+        .runtime
+        .block_on(handle.wallet.recover_from_wallet(gap_limit as usize));
+    let code = result_to_code(&result);
+    if let Ok(r) = result {
+        unsafe { *out_result = str_to_cstring(&r.to_string()) };
+    }
+    code
+}
+
 // ── Utilities ───────────────────────────────────────────────────────
 
 /// Get the library version string.
