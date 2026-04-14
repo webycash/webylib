@@ -121,10 +121,7 @@ async fn test_wallet_operations_offline() {
         "e1.00000000:secret:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
     )
     .unwrap();
-    wallet
-        .store_directly(test_webcash.clone())
-        .await
-        .unwrap();
+    wallet.store_directly(test_webcash.clone()).await.unwrap();
 
     let balance = wallet.balance().await.unwrap();
     assert_eq!(balance, "1");
@@ -869,9 +866,7 @@ async fn create_test_wallet(temp_dir: &TempDir, wallet_name: &str) -> (Wallet, P
 }
 
 async fn create_passkey_wallet(temp_dir: &TempDir, wallet_name: &str) -> (Wallet, PathBuf) {
-    let wallet_path = temp_dir
-        .path()
-        .join(format!("{}_passkey.db", wallet_name));
+    let wallet_path = temp_dir.path().join(format!("{}_passkey.db", wallet_name));
     let wallet = Wallet::open_with_passkey(&wallet_path, true)
         .await
         .expect("Should create passkey wallet");

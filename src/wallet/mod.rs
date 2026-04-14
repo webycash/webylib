@@ -24,8 +24,8 @@ use std::sync::Mutex;
 
 use rusqlite::Connection;
 
-use crate::passkey::{PasskeyEncryption, EncryptionConfig};
 use crate::error::{Error, Result};
+use crate::passkey::{EncryptionConfig, PasskeyEncryption};
 use crate::server::{NetworkMode, ServerClient, ServerClientTrait, ServerConfig};
 
 // Re-export types consumers need
@@ -57,10 +57,7 @@ impl Wallet {
     }
 
     /// Open or create a wallet with optional passkey encryption.
-    pub async fn open_with_passkey<P: AsRef<Path>>(
-        path: P,
-        enable_passkey: bool,
-    ) -> Result<Self> {
+    pub async fn open_with_passkey<P: AsRef<Path>>(path: P, enable_passkey: bool) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
 
         if let Some(parent) = path.parent() {
@@ -117,10 +114,7 @@ impl Wallet {
     }
 
     /// Open or create a wallet targeting a specific network.
-    pub async fn open_with_network<P: AsRef<Path>>(
-        path: P,
-        network: NetworkMode,
-    ) -> Result<Self> {
+    pub async fn open_with_network<P: AsRef<Path>>(path: P, network: NetworkMode) -> Result<Self> {
         let config = ServerConfig {
             network: network.clone(),
             timeout_seconds: 30,
@@ -215,12 +209,10 @@ impl Wallet {
         if self.is_encrypted {
             // Drop the SQLite connection BEFORE encrypting to ensure the DB file
             // is fully flushed and won't be overwritten when `self` is dropped.
-            let placeholder = Connection::open_in_memory()
-                .map_err(|e| Error::wallet(format!("Failed to create placeholder connection: {}", e)))?;
-            let old_connection = std::mem::replace(
-                &mut self.connection,
-                Mutex::new(placeholder),
-            );
+            let placeholder = Connection::open_in_memory().map_err(|e| {
+                Error::wallet(format!("Failed to create placeholder connection: {}", e))
+            })?;
+            let old_connection = std::mem::replace(&mut self.connection, Mutex::new(placeholder));
             let connection = old_connection
                 .into_inner()
                 .map_err(|_| Error::wallet("Failed to acquire database lock during close"))?;

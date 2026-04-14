@@ -4,8 +4,11 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::Wallet;
-use crate::passkey::{decrypt_with_password, encrypt_with_password, EncryptedData, EncryptionConfig, PasskeyEncryption};
 use crate::error::{Error, Result};
+use crate::passkey::{
+    decrypt_with_password, encrypt_with_password, EncryptedData, EncryptionConfig,
+    PasskeyEncryption,
+};
 
 impl Wallet {
     /// Check if a database file is encrypted (not a valid SQLite header).
@@ -121,7 +124,7 @@ impl Wallet {
     /// Encrypt the entire wallet using passkey authentication.
     /// Creates a PasskeyEncryption instance on the fly if not already present.
     pub async fn encrypt_with_passkey(&self) -> Result<EncryptedData> {
-        use crate::passkey::{PasskeyEncryption, EncryptionConfig};
+        use crate::passkey::{EncryptionConfig, PasskeyEncryption};
 
         let wallet_data = self.export_wallet_data().await?;
 
@@ -156,7 +159,7 @@ impl Wallet {
     /// Decrypt and restore wallet data using passkey authentication.
     /// Creates a PasskeyEncryption instance on the fly if not already present.
     pub async fn decrypt_with_passkey(&self, encrypted_data: &EncryptedData) -> Result<()> {
-        use crate::passkey::{PasskeyEncryption, EncryptionConfig};
+        use crate::passkey::{EncryptionConfig, PasskeyEncryption};
 
         if let Some(ref passkey_mutex) = self.passkey_encryption {
             let mut passkey = passkey_mutex

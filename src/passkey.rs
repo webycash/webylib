@@ -256,17 +256,35 @@ impl PasskeyEncryption {
     /// Get available passkey type description for this platform.
     pub async fn get_available_passkey_type(&self) -> Option<String> {
         #[cfg(target_os = "macos")]
-        { Some("macOS Keychain (Touch ID / Apple Watch / Passcode)".to_string()) }
+        {
+            Some("macOS Keychain (Touch ID / Apple Watch / Passcode)".to_string())
+        }
         #[cfg(target_os = "ios")]
-        { Some("iOS Keychain (Face ID / Touch ID)".to_string()) }
+        {
+            Some("iOS Keychain (Face ID / Touch ID)".to_string())
+        }
         #[cfg(target_os = "linux")]
-        { Some("Linux Secret Service (GNOME Keyring / KDE Wallet)".to_string()) }
+        {
+            Some("Linux Secret Service (GNOME Keyring / KDE Wallet)".to_string())
+        }
         #[cfg(target_os = "windows")]
-        { Some("Windows Credential Manager".to_string()) }
+        {
+            Some("Windows Credential Manager".to_string())
+        }
         #[cfg(target_os = "freebsd")]
-        { Some("FreeBSD file-based keyring".to_string()) }
-        #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "linux", target_os = "windows", target_os = "freebsd")))]
-        { None }
+        {
+            Some("FreeBSD file-based keyring".to_string())
+        }
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "ios",
+            target_os = "linux",
+            target_os = "windows",
+            target_os = "freebsd"
+        )))]
+        {
+            None
+        }
     }
 
     // Private implementation methods
@@ -341,7 +359,13 @@ impl PasskeyEncryption {
         return "linux".to_string();
         #[cfg(target_os = "windows")]
         return "windows".to_string();
-        #[cfg(not(any(target_os = "ios", target_os = "android", target_os = "macos", target_os = "linux", target_os = "windows")))]
+        #[cfg(not(any(
+            target_os = "ios",
+            target_os = "android",
+            target_os = "macos",
+            target_os = "linux",
+            target_os = "windows"
+        )))]
         return "other".to_string();
     }
 
@@ -364,7 +388,8 @@ impl PasskeyEncryption {
             .map_err(|e| Error::crypto(format!("Passkey keyring init failed: {}", e)))?;
 
         // Store key as base64 (keyring stores strings, not raw bytes)
-        let key_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, key.as_bytes());
+        let key_b64 =
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, key.as_bytes());
         entry
             .set_password(&key_b64)
             .map_err(|e| Error::crypto(format!("Passkey store failed: {}", e)))?;
@@ -380,8 +405,9 @@ impl PasskeyEncryption {
             .get_password()
             .map_err(|e| Error::crypto(format!("Passkey retrieve failed: {}", e)))?;
 
-        let key_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &key_b64)
-            .map_err(|e| Error::crypto(format!("Passkey decode failed: {}", e)))?;
+        let key_bytes =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &key_b64)
+                .map_err(|e| Error::crypto(format!("Passkey decode failed: {}", e)))?;
 
         if key_bytes.len() != 32 {
             return Err(Error::crypto(format!(
@@ -396,7 +422,10 @@ impl PasskeyEncryption {
     }
 
     async fn verify_passkey_access(&self) -> Result<bool> {
-        self.retrieve_passkey_key().await.map(|_| true).or(Ok(false))
+        self.retrieve_passkey_key()
+            .await
+            .map(|_| true)
+            .or(Ok(false))
     }
 }
 

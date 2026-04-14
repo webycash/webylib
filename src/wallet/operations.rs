@@ -789,10 +789,7 @@ impl Wallet {
     ) -> Result<RecoveryResult> {
         use crate::hd::ChainCode;
 
-        log::info!(
-            "Starting wallet recovery with gap_limit={}",
-            gap_limit
-        );
+        log::info!("Starting wallet recovery with gap_limit={}", gap_limit);
 
         let master_secret_bytes = hex::decode(master_secret_hex)
             .map_err(|_| Error::wallet("Invalid master secret hex format"))?;
@@ -978,10 +975,7 @@ impl Wallet {
 impl Wallet {
     /// Derive the next HD secret for the given chain code and increment the depth.
     /// Returns (secret_hex, depth_used).
-    pub fn derive_next_secret(
-        &self,
-        chain_code: crate::hd::ChainCode,
-    ) -> Result<(String, u64)> {
+    pub fn derive_next_secret(&self, chain_code: crate::hd::ChainCode) -> Result<(String, u64)> {
         let master_secret_hex = self.get_master_secret()?;
         let master_secret_array = self.validate_master_secret(&master_secret_hex)?;
         let hd_wallet = HDWallet::from_master_secret(master_secret_array);

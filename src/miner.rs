@@ -90,9 +90,7 @@ pub async fn mine(wallet: &Wallet) -> Result<MineResult> {
     let webcash_str = format!("e{}:secret:{}", mining_amount_str, mining_secret_hex);
 
     // Derive subsidy secret if subsidy > 0
-    let subsidy_amount_f64: f64 = subsidy_amount_str
-        .parse()
-        .unwrap_or(0.0);
+    let subsidy_amount_f64: f64 = subsidy_amount_str.parse().unwrap_or(0.0);
     let subsidy_amount = Amount::from_webcash(subsidy_amount_f64)?;
     let subsidy_str = if !subsidy_amount.is_zero() {
         let (subsidy_secret_hex, _) = wallet.derive_next_secret(ChainCode::Mining)?;

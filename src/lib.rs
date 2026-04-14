@@ -26,12 +26,12 @@
 //! ```
 
 pub mod amount;
-pub mod passkey;
 pub mod crypto;
 pub mod error;
 #[cfg(feature = "ffi")]
 pub mod ffi;
 pub mod hd;
+pub mod passkey;
 pub mod protocol;
 pub mod server;
 pub mod wallet;
