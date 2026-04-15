@@ -5,12 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.5] - 2026-04-15
+## [0.2.6] - 2026-04-15
 
 ### Changed
 - Documentation and log messages: prefer **secret webcash** / **webcash string**
   wording over “token” when referring to bearer `e…:secret:…` values.
 - `docs/PROTOCOL.md`: section title clarified (“Webcash string format”).
+
+### Meta
+- Publishes to **crates.io** (index was still at **0.2.4** after git tag `v0.2.5`).
+  Downstream crates should depend on `webylib = "0.2"` and run `cargo update -p webylib`
+  after this release.
+
+## [0.2.5] - 2026-04-15
+
+_Unpublished to crates.io; changes rolled into **0.2.6**._
 
 ## [0.2.4] - 2026-04-14
 
