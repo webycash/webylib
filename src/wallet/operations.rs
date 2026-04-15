@@ -330,9 +330,9 @@ impl Wallet {
             Err(Error::Server { ref message })
                 if message.contains("can only be replaced by itself") =>
             {
-                // Same-lineage token — validate unspent then store directly.
+                // Same-lineage secret webcash — validate unspent then store directly.
                 // No RECEIVE depth increment: no HD derivation used.
-                log::info!("Same-lineage token detected, storing directly without replace");
+                log::info!("Same-lineage secret webcash detected, storing directly without replace");
                 let public_webcash = webcash.to_public();
                 let health_response = server
                     .health_check(std::slice::from_ref(&public_webcash))

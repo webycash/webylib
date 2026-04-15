@@ -4,7 +4,7 @@
 
 Webcash is a centralized electronic cash system. Value exists as cryptographic strings that can be spent exactly once. A central server (webcash.org) validates all transactions and prevents double-spending.
 
-## Token Format
+## Webcash string format (secret and public)
 
 ```
 e{amount}:{type}:{value}

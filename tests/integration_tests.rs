@@ -10,7 +10,7 @@
 //! - Runtime encryption tests
 //!
 //! These tests require TEST_WEBCASH_SECRET environment variable to be set
-//! with a valid webcash token for testing against the live Webcash server.
+//! with a valid secret webcash string for testing against the live Webcash server.
 
 use std::env;
 use std::fs;
