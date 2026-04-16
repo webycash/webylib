@@ -1,3 +1,7 @@
+[workspace]
+resolver = "2"
+members = [".", "crates/webylib-wasm"]
+
 [package]
 name = "webylib"
 version = "0.2.6"

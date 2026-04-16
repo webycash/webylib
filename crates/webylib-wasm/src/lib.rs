@@ -1,0 +1,463 @@
+//! Webycash wallet cryptographic primitives for WebAssembly.
+//!
+//! Exposes the pure-crypto subset of webylib for browser wallets:
+//! HD key derivation, SHA-256, Argon2+AES-256-GCM encryption,
+//! webcash string parsing, and amount formatting.
+//!
+//! All algorithms produce identical output to the native webylib crate.
+
+use aes_gcm::aead::{generic_array::GenericArray, Aead, KeyInit};
+use aes_gcm::Aes256Gcm;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use wasm_bindgen::prelude::*;
+use zeroize::Zeroize;
+
+// ── Constants ────────────────────────────────────────────────────
+
+const DECIMALS: u32 = 8;
+const UNIT: i64 = 100_000_000; // 10^8
+
+// ── HD Key Derivation ────────────────────────────────────────────
+// Mirrors webylib/src/hd.rs:95-104 exactly.
+//
+// tag = SHA256("webcashwalletv1")
+// secret = SHA256(tag ‖ tag ‖ master_secret ‖ chain_code_be64 ‖ depth_be64)
+
+#[wasm_bindgen]
+pub fn derive_secret(master_secret_hex: &str, chain_code: u32, depth: u64) -> Result<String, JsError> {
+    let master_bytes = hex::decode(master_secret_hex)
+        .map_err(|_| JsError::new("invalid master secret hex"))?;
+    if master_bytes.len() != 32 {
+        return Err(JsError::new("master secret must be 32 bytes (64 hex chars)"));
+    }
+
+    let tag = Sha256::digest(b"webcashwalletv1");
+
+    let mut hasher = Sha256::new();
+    hasher.update(&tag);
+    hasher.update(&tag);
+    hasher.update(&master_bytes);
+    hasher.update((chain_code as u64).to_be_bytes());
+    hasher.update(depth.to_be_bytes());
+
+    let hash = hasher.finalize();
+    Ok(hex::encode(hash))
+}
+
+// ── Master Secret Generation ─────────────────────────────────────
+
+#[wasm_bindgen]
+pub fn generate_master_secret() -> Result<String, JsError> {
+    let mut bytes = [0u8; 32];
+    getrandom::getrandom(&mut bytes)
+        .map_err(|e| JsError::new(&format!("RNG failed: {}", e)))?;
+    let hex_str = hex::encode(bytes);
+    bytes.zeroize();
+    Ok(hex_str)
+}
+
+// ── SHA-256 ──────────────────────────────────────────────────────
+
+#[wasm_bindgen]
+pub fn sha256_hex(data: &str) -> String {
+    hex::encode(Sha256::digest(data.as_bytes()))
+}
+
+/// Hash a secret string to its public webcash hash.
+/// CRITICAL: hashes the ASCII string, NOT hex-decoded bytes.
+/// Matches Python: hashlib.sha256(bytes(str(secret), "ascii")).hexdigest()
+#[wasm_bindgen]
+pub fn secret_to_public(secret: &str) -> String {
+    sha256_hex(secret)
+}
+
+// ── Webcash String Parsing ───────────────────────────────────────
+
+#[derive(Serialize)]
+struct ParsedWebcash {
+    secret: String,
+    amount_wats: i64,
+    amount_display: String,
+}
+
+/// Parse a webcash string like "e0.0001:secret:abcdef..." into its components.
+#[wasm_bindgen]
+pub fn parse_webcash(s: &str) -> Result<JsValue, JsError> {
+    let s = s.trim();
+    if !s.starts_with('e') {
+        return Err(JsError::new("webcash must start with 'e'"));
+    }
+
+    let parts: Vec<&str> = s[1..].split(':').collect();
+    if parts.len() < 3 {
+        return Err(JsError::new("invalid webcash format: expected e<amount>:secret:<hex>"));
+    }
+    if parts[1] != "secret" {
+        return Err(JsError::new("expected 'secret' type"));
+    }
+
+    let wats = parse_amount_str(parts[0])?;
+    let secret = parts[2..].join(":");
+
+    if secret.len() != 64 {
+        return Err(JsError::new("secret must be 64 hex characters"));
+    }
+    hex::decode(&secret).map_err(|_| JsError::new("secret must be valid hex"))?;
+
+    let parsed = ParsedWebcash {
+        secret,
+        amount_wats: wats,
+        amount_display: format_amount_i64(wats),
+    };
+
+    serde_wasm_bindgen::to_value(&parsed).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Format a webcash string from secret and amount in wats.
+#[wasm_bindgen]
+pub fn format_webcash(secret: &str, amount_wats: i64) -> String {
+    format!("e{}:secret:{}", format_amount_i64(amount_wats), secret)
+}
+
+/// Format a public webcash string from hash and amount in wats.
+#[wasm_bindgen]
+pub fn format_public_webcash(hash_hex: &str, amount_wats: i64) -> String {
+    format!("e{}:public:{}", format_amount_i64(amount_wats), hash_hex)
+}
+
+// ── Amount Formatting ────────────────────────────────────────────
+
+#[wasm_bindgen]
+pub fn format_amount(wats: i64) -> String {
+    format_amount_i64(wats)
+}
+
+#[wasm_bindgen]
+pub fn parse_amount(s: &str) -> Result<i64, JsError> {
+    parse_amount_str(s)
+}
+
+fn format_amount_i64(wats: i64) -> String {
+    if wats == 0 {
+        return "0".to_string();
+    }
+    let integer_part = wats / UNIT;
+    let fractional_part = (wats % UNIT).abs();
+    if fractional_part == 0 {
+        format!("{}", integer_part)
+    } else {
+        let frac_str = format!("{:08}", fractional_part);
+        let trimmed = frac_str.trim_end_matches('0');
+        format!("{}.{}", integer_part, trimmed)
+    }
+}
+
+fn parse_amount_str(s: &str) -> Result<i64, JsError> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err(JsError::new("empty amount"));
+    }
+
+    // Strip 'e' or '₩' prefix
+    let s = if let Some(stripped) = s.strip_prefix('e') {
+        stripped
+    } else if s.starts_with('\u{20A9}') {
+        &s[3..] // ₩ is 3 bytes in UTF-8
+    } else {
+        s
+    };
+
+    if s == "0" {
+        return Ok(0);
+    }
+
+    let parts: Vec<&str> = s.split('.').collect();
+    if parts.len() > 2 {
+        return Err(JsError::new("too many decimal points"));
+    }
+
+    let integer_part = parts[0];
+    let fractional_part = if parts.len() == 2 { parts[1] } else { "" };
+
+    let mut wats: i64 = if integer_part.is_empty() {
+        0
+    } else {
+        integer_part
+            .parse::<i64>()
+            .map_err(|_| JsError::new("invalid integer part"))?
+    };
+
+    if !fractional_part.is_empty() {
+        if fractional_part.len() > DECIMALS as usize {
+            return Err(JsError::new("too many decimal places (max 8)"));
+        }
+        let frac_value: i64 = fractional_part
+            .parse()
+            .map_err(|_| JsError::new("invalid fractional part"))?;
+        let multiplier = 10_i64.pow(DECIMALS - fractional_part.len() as u32);
+        wats = wats
+            .checked_mul(UNIT)
+            .and_then(|w| w.checked_add(frac_value * multiplier))
+            .ok_or_else(|| JsError::new("amount overflow"))?;
+    } else {
+        wats = wats
+            .checked_mul(UNIT)
+            .ok_or_else(|| JsError::new("amount overflow"))?;
+    }
+
+    if wats < 0 {
+        return Err(JsError::new("negative amounts not allowed"));
+    }
+
+    Ok(wats)
+}
+
+// ── Password Encryption (Argon2id + AES-256-GCM) ────────────────
+// Mirrors webylib/src/passkey.rs:encrypt_with_password exactly.
+
+#[derive(Serialize, Deserialize)]
+pub struct EncryptedData {
+    pub ciphertext: Vec<u8>,
+    pub nonce: [u8; 12],
+    pub salt: [u8; 32],
+    pub algorithm: String,
+    pub kdf_params: KdfParams,
+    pub metadata: EncryptionMetadata,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct KdfParams {
+    pub info: String,
+    pub iterations: u32,
+    pub memory_cost: u32,
+    pub parallelism: u32,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct EncryptionMetadata {
+    pub encrypted_at: String,
+    pub platform: String,
+    pub version: String,
+    pub passkey_type: Option<String>,
+}
+
+#[wasm_bindgen]
+pub fn encrypt_data(plaintext: &[u8], password: &str) -> Result<String, JsError> {
+    // Generate salt
+    let mut salt = [0u8; 32];
+    getrandom::getrandom(&mut salt)
+        .map_err(|e| JsError::new(&format!("salt generation failed: {}", e)))?;
+
+    // Derive key with Argon2id (default params, same as native)
+    let mut key_bytes = [0u8; 32];
+    argon2::Argon2::default()
+        .hash_password_into(password.as_bytes(), &salt, &mut key_bytes)
+        .map_err(|e| JsError::new(&format!("key derivation failed: {}", e)))?;
+
+    // AES-256-GCM encrypt
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes)
+        .map_err(|e| JsError::new(&format!("cipher init failed: {}", e)))?;
+    key_bytes.zeroize();
+
+    let mut nonce_bytes = [0u8; 12];
+    getrandom::getrandom(&mut nonce_bytes)
+        .map_err(|e| JsError::new(&format!("nonce generation failed: {}", e)))?;
+    let nonce = GenericArray::from_slice(&nonce_bytes);
+
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext)
+        .map_err(|e| JsError::new(&format!("encryption failed: {}", e)))?;
+
+    let now_ms = (js_sys::Date::now() / 1000.0) as u64;
+
+    let encrypted = EncryptedData {
+        ciphertext,
+        nonce: nonce_bytes,
+        salt,
+        algorithm: "AES-256-GCM-PASSWORD".to_string(),
+        kdf_params: KdfParams {
+            info: "webycash-password-v1".to_string(),
+            iterations: 0,
+            memory_cost: 65536,
+            parallelism: 4,
+        },
+        metadata: EncryptionMetadata {
+            encrypted_at: now_ms.to_string(),
+            platform: "wasm".to_string(),
+            version: "1.0".to_string(),
+            passkey_type: None,
+        },
+    };
+
+    serde_json::to_string(&encrypted).map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn decrypt_data(encrypted_json: &str, password: &str) -> Result<Vec<u8>, JsError> {
+    let encrypted: EncryptedData =
+        serde_json::from_str(encrypted_json).map_err(|e| JsError::new(&e.to_string()))?;
+
+    if encrypted.algorithm != "AES-256-GCM-PASSWORD" {
+        return Err(JsError::new("wrong decryption method for this data"));
+    }
+
+    // Derive key with same Argon2id params
+    let mut key_bytes = [0u8; 32];
+    argon2::Argon2::default()
+        .hash_password_into(password.as_bytes(), &encrypted.salt, &mut key_bytes)
+        .map_err(|e| JsError::new(&format!("key derivation failed: {}", e)))?;
+
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes)
+        .map_err(|e| JsError::new(&format!("cipher init failed: {}", e)))?;
+    key_bytes.zeroize();
+
+    let nonce = GenericArray::from_slice(&encrypted.nonce);
+    cipher
+        .decrypt(nonce, encrypted.ciphertext.as_slice())
+        .map_err(|e| JsError::new(&format!("decryption failed: {}", e)))
+}
+
+/// Internal encrypt without JsError (for native tests).
+fn encrypt_data_internal(plaintext: &[u8], password: &str) -> Result<String, String> {
+    let mut salt = [0u8; 32];
+    getrandom::getrandom(&mut salt).map_err(|e| e.to_string())?;
+
+    let mut key_bytes = [0u8; 32];
+    argon2::Argon2::default()
+        .hash_password_into(password.as_bytes(), &salt, &mut key_bytes)
+        .map_err(|e| e.to_string())?;
+
+    let cipher =
+        Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    key_bytes.zeroize();
+
+    let mut nonce_bytes = [0u8; 12];
+    getrandom::getrandom(&mut nonce_bytes).map_err(|e| e.to_string())?;
+    let nonce = GenericArray::from_slice(&nonce_bytes);
+
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext)
+        .map_err(|e| e.to_string())?;
+
+    let encrypted = EncryptedData {
+        ciphertext,
+        nonce: nonce_bytes,
+        salt,
+        algorithm: "AES-256-GCM-PASSWORD".to_string(),
+        kdf_params: KdfParams {
+            info: "webycash-password-v1".to_string(),
+            iterations: 0,
+            memory_cost: 65536,
+            parallelism: 4,
+        },
+        metadata: EncryptionMetadata {
+            encrypted_at: "0".to_string(),
+            platform: "test".to_string(),
+            version: "1.0".to_string(),
+            passkey_type: None,
+        },
+    };
+
+    serde_json::to_string(&encrypted).map_err(|e| e.to_string())
+}
+
+fn decrypt_data_internal(encrypted_json: &str, password: &str) -> Result<Vec<u8>, String> {
+    let encrypted: EncryptedData =
+        serde_json::from_str(encrypted_json).map_err(|e| e.to_string())?;
+
+    if encrypted.algorithm != "AES-256-GCM-PASSWORD" {
+        return Err("wrong decryption method".into());
+    }
+
+    let mut key_bytes = [0u8; 32];
+    argon2::Argon2::default()
+        .hash_password_into(password.as_bytes(), &encrypted.salt, &mut key_bytes)
+        .map_err(|e| e.to_string())?;
+
+    let cipher =
+        Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    key_bytes.zeroize();
+
+    let nonce = GenericArray::from_slice(&encrypted.nonce);
+    cipher
+        .decrypt(nonce, encrypted.ciphertext.as_slice())
+        .map_err(|e| e.to_string())
+}
+
+fn parse_webcash_internal(s: &str) -> Result<(String, i64), String> {
+    let s = s.trim();
+    if !s.starts_with('e') {
+        return Err("webcash must start with 'e'".into());
+    }
+    let parts: Vec<&str> = s[1..].split(':').collect();
+    if parts.len() < 3 || parts[1] != "secret" {
+        return Err("invalid webcash format".into());
+    }
+    let wats = parse_amount_str(parts[0]).map_err(|e| format!("{:?}", e))?;
+    let secret = parts[2..].join(":");
+    if secret.len() != 64 {
+        return Err("secret must be 64 hex chars".into());
+    }
+    hex::decode(&secret).map_err(|_| "invalid hex".to_string())?;
+    Ok((secret, wats))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hd_derivation_deterministic() {
+        let master = "a".repeat(64);
+        let s1 = derive_secret(&master, 0, 0).unwrap();
+        let s2 = derive_secret(&master, 0, 0).unwrap();
+        assert_eq!(s1, s2);
+        let s3 = derive_secret(&master, 1, 0).unwrap();
+        assert_ne!(s1, s3);
+    }
+
+    #[test]
+    fn test_amount_roundtrip() {
+        assert_eq!(format_amount_i64(0), "0");
+        assert_eq!(format_amount_i64(100_000_000), "1");
+        assert_eq!(format_amount_i64(10_000), "0.0001");
+        assert_eq!(format_amount_i64(123_456_789), "1.23456789");
+
+        assert_eq!(parse_amount_str("0").unwrap(), 0);
+        assert_eq!(parse_amount_str("1").unwrap(), 100_000_000);
+        assert_eq!(parse_amount_str("0.0001").unwrap(), 10_000);
+        assert_eq!(parse_amount_str("1.23456789").unwrap(), 123_456_789);
+    }
+
+    #[test]
+    fn test_parse_webcash_valid() {
+        let input = "e0.0001:secret:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let (secret, wats) = parse_webcash_internal(input).unwrap();
+        assert_eq!(secret.len(), 64);
+        assert_eq!(wats, 10_000);
+    }
+
+    #[test]
+    fn test_secret_to_public() {
+        let secret = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let pub1 = sha256_hex(secret);
+        assert_eq!(pub1.len(), 64);
+    }
+
+    #[test]
+    fn test_password_encryption_roundtrip() {
+        let plaintext = b"test wallet data";
+        let password = "hunter2";
+        let encrypted = encrypt_data_internal(plaintext, password).unwrap();
+        let decrypted = decrypt_data_internal(&encrypted, password).unwrap();
+        assert_eq!(decrypted, plaintext);
+        assert!(decrypt_data_internal(&encrypted, "wrong").is_err());
+    }
+
+    #[test]
+    fn test_format_webcash() {
+        let s = format_webcash("abcd".repeat(16).as_str(), 10_000);
+        assert!(s.starts_with("e0.0001:secret:"));
+    }
+}
