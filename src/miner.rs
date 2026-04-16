@@ -147,9 +147,9 @@ pub async fn mine(wallet: &Wallet) -> Result<MineResult> {
         server.submit_mining_report(&report).await?;
     }
 
-    // 5. Store the mined webcash in the wallet
+    // 5. Store the mined webcash directly (no /replace needed — we own the HD-derived secret)
     let secret = SecretWebcash::parse(&webcash_str)?;
-    wallet.insert(secret).await?;
+    wallet.store_directly(secret).await?;
 
     Ok(MineResult {
         webcash: webcash_str,
