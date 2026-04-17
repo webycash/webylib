@@ -14,7 +14,8 @@ use std::collections::HashMap;
 // ── Store trait ──────────────────────────────────────────────────
 
 /// Minimal storage interface for the wallet engine.
-pub(crate) trait Store {
+pub trait Store {
+    fn as_any(&self) -> &dyn std::any::Any;
     fn get_meta(&self, key: &str) -> Result<Option<String>>;
     fn set_meta(&self, key: &str, value: &str) -> Result<()>;
 
@@ -62,6 +63,8 @@ pub(crate) mod sqlite {
     }
 
     impl Store for SqliteStore {
+        fn as_any(&self) -> &dyn std::any::Any { self }
+
         fn get_meta(&self, key: &str) -> Result<Option<String>> {
             let conn = self.connection()?;
             conn.query_row(
@@ -270,6 +273,8 @@ pub(crate) mod sqlite {
     struct SqliteTxStore<'a>(&'a rusqlite::Transaction<'a>);
 
     impl<'a> Store for SqliteTxStore<'a> {
+        fn as_any(&self) -> &dyn std::any::Any { unimplemented!("TxStore is not downcastable") }
+
         fn get_meta(&self, key: &str) -> Result<Option<String>> {
             self.0
                 .query_row(
@@ -517,6 +522,8 @@ pub(crate) mod mem {
     }
 
     impl Store for MemStore {
+        fn as_any(&self) -> &dyn std::any::Any { self }
+
         fn get_meta(&self, key: &str) -> Result<Option<String>> {
             Ok(self.0.borrow().meta.get(key).cloned())
         }

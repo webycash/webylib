@@ -1,12 +1,10 @@
 //! Wallet snapshot export/import for backup and recovery.
 
 use std::collections::HashMap;
-
-use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
 use super::Wallet;
-use crate::error::{Error, Result};
+use crate::error::Result;
 
 /// Complete wallet state snapshot for backup/restore.
 #[derive(Serialize, Deserialize, Debug)]
@@ -41,131 +39,55 @@ pub(crate) struct WalletExport {
 }
 
 impl Wallet {
-    /// Export wallet state to a snapshot.
     pub fn export_snapshot(&self) -> Result<WalletSnapshot> {
-        let connection = self
-            .connection
-            .lock()
-            .map_err(|_| Error::wallet("Failed to acquire lock"))?;
+        let master_secret = self.store.get_meta("master_secret")?.unwrap_or_default();
+        let unspent = self.store.get_unspent_full()?
+            .into_iter()
+            .map(|(secret, amount, created_at)| UnspentOutputSnapshot { secret, amount, created_at })
+            .collect();
 
-        let master_secret: String = connection.query_row(
-            "SELECT value FROM wallet_metadata WHERE key = 'master_secret'",
-            [],
-            |r| r.get(0),
-        )?;
+        let spent = self.store.get_spent_hashes_with_time()?
+            .into_iter()
+            .map(|(hash_blob, spent_at)| SpentHashSnapshot {
+                hash: hex::encode(hash_blob),
+                spent_at,
+            })
+            .collect();
 
-        let mut stmt = connection
-            .prepare("SELECT secret, amount, created_at FROM unspent_outputs WHERE spent = 0")?;
-        let unspent = stmt
-            .query_map([], |row| {
-                Ok(UnspentOutputSnapshot {
-                    secret: row.get(0)?,
-                    amount: row.get(1)?,
-                    created_at: row.get(2)?,
-                })
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let depths = self.store.get_all_depths()?
+            .into_iter()
+            .map(|(k, v)| (k, v as i64))
+            .collect();
 
-        let mut stmt = connection.prepare("SELECT hash, spent_at FROM spent_hashes")?;
-        let spent = stmt
-            .query_map([], |row| {
-                let hash_blob: Vec<u8> = row.get(0)?;
-                Ok(SpentHashSnapshot {
-                    hash: hex::encode(hash_blob),
-                    spent_at: row.get(1)?,
-                })
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-
-        let mut stmt = connection.prepare("SELECT chain_code, depth FROM walletdepths")?;
-        let depths_map = stmt
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-            })?
-            .collect::<std::result::Result<HashMap<String, i64>, _>>()?;
-
-        Ok(WalletSnapshot {
-            master_secret,
-            unspent_outputs: unspent,
-            spent_hashes: spent,
-            depths: depths_map,
-        })
+        Ok(WalletSnapshot { master_secret, unspent_outputs: unspent, spent_hashes: spent, depths })
     }
 
-    /// Import wallet state from a snapshot (overwrites current state).
     pub fn import_snapshot(&self, snapshot: &WalletSnapshot) -> Result<()> {
-        let mut connection = self
-            .connection
-            .lock()
-            .map_err(|_| Error::wallet("Failed to acquire lock"))?;
-        let tx = connection.transaction()?;
-
-        tx.execute(
-            "INSERT OR REPLACE INTO wallet_metadata (key, value) VALUES ('master_secret', ?1)",
-            params![snapshot.master_secret],
-        )?;
+        self.store.clear_all()?;
+        self.store.set_meta("master_secret", &snapshot.master_secret)?;
 
         for (code, depth) in &snapshot.depths {
-            tx.execute(
-                "INSERT OR REPLACE INTO walletdepths (chain_code, depth) VALUES (?1, ?2)",
-                params![code, depth],
-            )?;
+            self.store.set_depth(code, *depth as u64)?;
         }
 
         for item in &snapshot.unspent_outputs {
             let secret_hash = crate::crypto::sha256(item.secret.as_bytes());
-            tx.execute(
-                "INSERT OR REPLACE INTO unspent_outputs (secret_hash, secret, amount, created_at, spent) VALUES (?1, ?2, ?3, ?4, 0)",
-                params![&secret_hash[..], item.secret, item.amount, item.created_at],
-            )?;
+            self.store.insert_output(&secret_hash, &item.secret, item.amount)?;
         }
 
         for item in &snapshot.spent_hashes {
-            let hash_bytes =
-                hex::decode(&item.hash).map_err(|_| Error::wallet("Invalid hex in snapshot"))?;
-            tx.execute(
-                "INSERT OR REPLACE INTO spent_hashes (hash, spent_at) VALUES (?1, ?2)",
-                params![hash_bytes, item.spent_at],
-            )?;
+            let hash_bytes = hex::decode(&item.hash)
+                .map_err(|_| crate::error::Error::wallet("Invalid hex in snapshot"))?;
+            self.store.insert_spent_hash(&hash_bytes)?;
         }
 
-        tx.commit()?;
         Ok(())
     }
 
-    /// Export wallet data to bytes for encryption.
     pub(crate) async fn export_wallet_data(&self) -> Result<Vec<u8>> {
-        let connection = self
-            .connection
-            .lock()
-            .map_err(|_| Error::wallet("Failed to acquire database lock"))?;
-
-        let mut stmt = connection.prepare("SELECT key, value FROM wallet_metadata ORDER BY key")?;
-        let metadata = stmt
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })?
-            .collect::<std::result::Result<HashMap<String, String>, _>>()?;
-
-        let mut stmt = connection
-            .prepare("SELECT secret, amount, created_at, spent FROM unspent_outputs ORDER BY id")?;
-        let outputs = stmt
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, i64>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, i32>(3)?,
-                ))
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-
-        let mut stmt = connection.prepare("SELECT hash, spent_at FROM spent_hashes ORDER BY id")?;
-        let spent_hashes = stmt
-            .query_map([], |row| {
-                Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, String>(1)?))
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let metadata = self.store.get_all_meta()?;
+        let outputs = self.store.get_all_outputs()?;
+        let spent_hashes = self.store.get_spent_hashes_with_time()?;
 
         let wallet_export = WalletExport {
             version: "1.0".to_string(),
@@ -176,48 +98,28 @@ impl Wallet {
         };
 
         serde_json::to_vec(&wallet_export)
-            .map_err(|e| Error::wallet(format!("Failed to serialize wallet data: {}", e)))
+            .map_err(|e| crate::error::Error::wallet(format!("Failed to serialize wallet data: {}", e)))
     }
 
-    /// Import wallet data from bytes after decryption.
     pub(crate) async fn import_wallet_data(&self, data: &[u8]) -> Result<()> {
         let wallet_export: WalletExport = serde_json::from_slice(data)
-            .map_err(|e| Error::wallet(format!("Failed to deserialize wallet data: {}", e)))?;
+            .map_err(|e| crate::error::Error::wallet(format!("Failed to deserialize wallet data: {}", e)))?;
 
-        let connection = self
-            .connection
-            .lock()
-            .map_err(|_| Error::wallet("Failed to acquire database lock"))?;
-
-        let tx = connection.unchecked_transaction()?;
-
-        tx.execute("DELETE FROM wallet_metadata", [])?;
-        tx.execute("DELETE FROM unspent_outputs", [])?;
-        tx.execute("DELETE FROM spent_hashes", [])?;
+        self.store.clear_all()?;
 
         for (key, value) in wallet_export.metadata {
-            tx.execute(
-                "INSERT INTO wallet_metadata (key, value) VALUES (?1, ?2)",
-                params![key, value],
-            )?;
+            self.store.set_meta(&key, &value)?;
         }
 
-        for (secret, amount, created_at, spent) in wallet_export.outputs {
+        for (secret, amount, _created_at, _spent) in wallet_export.outputs {
             let secret_hash = crate::crypto::sha256(secret.as_bytes());
-            tx.execute(
-                "INSERT INTO unspent_outputs (secret_hash, secret, amount, created_at, spent) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![&secret_hash[..], secret, amount, created_at, spent],
-            )?;
+            self.store.insert_output(&secret_hash, &secret, amount)?;
         }
 
-        for (hash, spent_at) in wallet_export.spent_hashes {
-            tx.execute(
-                "INSERT INTO spent_hashes (hash, spent_at) VALUES (?1, ?2)",
-                params![hash, spent_at],
-            )?;
+        for (hash, _spent_at) in wallet_export.spent_hashes {
+            self.store.insert_spent_hash(&hash)?;
         }
 
-        tx.commit()?;
         log::info!("Wallet data imported from encrypted backup");
         Ok(())
     }

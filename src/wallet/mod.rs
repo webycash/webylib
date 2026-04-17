@@ -1,66 +1,64 @@
-//! Wallet engine — SQLite-backed HD wallet for Webcash.
-//!
-//! The wallet is the primary interface for managing webcash: storing secrets,
-//! making payments, recovering from master seeds, and encrypting data at rest.
+//! Wallet engine — pluggable-storage HD wallet for Webcash.
 //!
 //! # Architecture
 //!
-//! - **`schema`** — Database schema, WAL mode, migrations.
+//! - **`store`** — Storage trait: `SqliteStore` (native) or `MemStore` (WASM).
 //! - **`operations`** — Insert, pay, merge, recover, check, balance.
 //! - **`encryption`** — Database-level and seed-level encryption.
 //! - **`snapshot`** — JSON export/import for backup and recovery.
-//!
-//! The `Wallet` struct owns a `Mutex<Connection>` for thread-safe DB access
-//! and a `Mutex<Box<dyn ServerClientTrait>>` for server communication.
-//! Each wallet instance is self-contained — no global singletons.
+//! - **`schema`** — SQLite schema init (native only).
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod encryption;
 pub mod operations;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod schema;
 pub mod snapshot;
 pub mod store;
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-
-use rusqlite::Connection;
 
 use crate::error::{Error, Result};
-use crate::passkey::{EncryptionConfig, PasskeyEncryption};
-use crate::server::{NetworkMode, ServerClient, ServerClientTrait, ServerConfig};
+use crate::server::{NetworkMode, ServerClientTrait};
 
-// Re-export types consumers need
+#[cfg(not(target_arch = "wasm32"))]
+use crate::passkey::{EncryptionConfig, PasskeyEncryption};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::server::{ServerClient, ServerConfig};
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::Mutex;
+
 pub use operations::{CheckResult, RecoveryResult, WalletStats};
 pub use snapshot::{SpentHashSnapshot, UnspentOutputSnapshot, WalletSnapshot};
+pub use store::Store;
 
-/// SQLite-backed Webcash wallet.
+/// Webcash wallet with pluggable storage backend.
 pub struct Wallet {
-    /// Path to the wallet database file.
     pub(crate) path: PathBuf,
-    /// SQLite connection (Mutex for thread safety).
-    pub(crate) connection: Mutex<Connection>,
-    /// Server client for webcash operations (tokio Mutex: safe to hold across .await).
+    pub(crate) store: Box<dyn Store + Send + Sync>,
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) server_client: tokio::sync::Mutex<Box<dyn ServerClientTrait + Send>>,
-    /// Passkey encryption handler (optional).
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) passkey_encryption: Option<Mutex<PasskeyEncryption>>,
-    /// Whether this wallet uses runtime encryption.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) is_encrypted: bool,
-    /// Temporary path for decrypted database during runtime.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) temp_db_path: Option<PathBuf>,
-    /// Network mode (Production, Testnet, or Custom URL).
     pub(crate) network: NetworkMode,
 }
 
+// ── Native constructors ──────────────────────────────────────────
+
+#[cfg(not(target_arch = "wasm32"))]
 impl Wallet {
-    /// Open or create a wallet at the given path.
     pub async fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         Self::open_with_passkey(path, false).await
     }
 
-    /// Open or create a wallet with optional passkey encryption.
     pub async fn open_with_passkey<P: AsRef<Path>>(path: P, enable_passkey: bool) -> Result<Self> {
-        let path = path.as_ref().to_path_buf();
+        use rusqlite::Connection;
 
+        let path = path.as_ref().to_path_buf();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -85,9 +83,7 @@ impl Wallet {
                 app_identifier: "com.webycash.webylib".to_string(),
                 service_name: format!(
                     "WalletEncryption_{}",
-                    path.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("default")
+                    path.file_name().and_then(|n| n.to_str()).unwrap_or("default")
                 ),
                 require_auth_every_use: true,
                 auth_timeout_seconds: 0,
@@ -99,27 +95,25 @@ impl Wallet {
         };
 
         let server_client: Box<dyn ServerClientTrait + Send> = Box::new(ServerClient::new()?);
+        let store: Box<dyn Store + Send + Sync> = Box::new(store::sqlite::SqliteStore(Mutex::new(connection)));
 
         let wallet = Wallet {
             path,
-            connection: Mutex::new(connection),
+            store,
             server_client: tokio::sync::Mutex::new(server_client),
             passkey_encryption,
             is_encrypted,
             temp_db_path,
             network: NetworkMode::Production,
         };
-
         let _ = wallet.get_or_generate_master_secret()?;
         Ok(wallet)
     }
 
-    /// Open or create a wallet targeting a specific network.
     pub async fn open_with_network<P: AsRef<Path>>(path: P, network: NetworkMode) -> Result<Self> {
-        let config = ServerConfig {
-            network: network.clone(),
-            timeout_seconds: 30,
-        };
+        use rusqlite::Connection;
+
+        let config = ServerConfig { network: network.clone(), timeout_seconds: 30 };
         let server_client: Box<dyn ServerClientTrait + Send> =
             Box::new(ServerClient::with_config(config)?);
 
@@ -130,9 +124,11 @@ impl Wallet {
         let connection = Connection::open(&path)?;
         schema::initialize_schema(&connection)?;
 
+        let store: Box<dyn Store + Send + Sync> = Box::new(store::sqlite::SqliteStore(Mutex::new(connection)));
+
         let wallet = Wallet {
             path,
-            connection: Mutex::new(connection),
+            store,
             server_client: tokio::sync::Mutex::new(server_client),
             passkey_encryption: None,
             is_encrypted: false,
@@ -143,17 +139,11 @@ impl Wallet {
         Ok(wallet)
     }
 
-    /// Open or create a wallet with a caller-provided seed.
-    /// If the wallet already has a different master secret, returns an error.
     pub async fn open_with_seed<P: AsRef<Path>>(path: P, seed: &[u8; 32]) -> Result<Self> {
         let wallet = Self::open(path).await?;
         let hex = hex::encode(seed);
-
-        // Check if there's already a different master secret
         let existing = wallet.master_secret_hex()?;
         if existing != hex {
-            // If the wallet was just created, the auto-generated secret is fine to overwrite
-            // But if it has transactions, refuse
             let stats = wallet.stats().await?;
             if stats.total_webcash > 0 {
                 return Err(Error::wallet(
@@ -165,26 +155,25 @@ impl Wallet {
         Ok(wallet)
     }
 
-    /// Open an in-memory wallet (useful for testing or stateless execution).
     pub fn open_memory() -> Result<Self> {
         Self::open_memory_with_network(NetworkMode::Production)
     }
 
-    /// Open an in-memory wallet targeting a specific network.
     pub fn open_memory_with_network(network: NetworkMode) -> Result<Self> {
+        use rusqlite::Connection;
+
         let connection = Connection::open_in_memory()?;
         schema::initialize_schema(&connection)?;
 
-        let config = ServerConfig {
-            network: network.clone(),
-            timeout_seconds: 30,
-        };
+        let config = ServerConfig { network: network.clone(), timeout_seconds: 30 };
         let server_client: Box<dyn ServerClientTrait + Send> =
             Box::new(ServerClient::with_config(config)?);
 
+        let store: Box<dyn Store + Send + Sync> = Box::new(store::sqlite::SqliteStore(Mutex::new(connection)));
+
         let wallet = Wallet {
             path: PathBuf::from(":memory:"),
-            connection: Mutex::new(connection),
+            store,
             server_client: tokio::sync::Mutex::new(server_client),
             passkey_encryption: None,
             is_encrypted: false,
@@ -195,30 +184,8 @@ impl Wallet {
         Ok(wallet)
     }
 
-    /// Get the wallet database path.
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    /// Get the network mode this wallet targets.
-    pub fn network(&self) -> &NetworkMode {
-        &self.network
-    }
-
-    /// Close the wallet (flushes any pending operations).
     pub async fn close(mut self) -> Result<()> {
         if self.is_encrypted {
-            // Drop the SQLite connection BEFORE encrypting to ensure the DB file
-            // is fully flushed and won't be overwritten when `self` is dropped.
-            let placeholder = Connection::open_in_memory().map_err(|e| {
-                Error::wallet(format!("Failed to create placeholder connection: {}", e))
-            })?;
-            let old_connection = std::mem::replace(&mut self.connection, Mutex::new(placeholder));
-            let connection = old_connection
-                .into_inner()
-                .map_err(|_| Error::wallet("Failed to acquire database lock during close"))?;
-            drop(connection);
-
             self.encrypt_database().await?;
         }
         if let Some(passkey_mutex) = self.passkey_encryption.take() {
@@ -231,6 +198,54 @@ impl Wallet {
     }
 }
 
+// ── WASM constructors ────────────────────────────────────────────
+
+#[cfg(target_arch = "wasm32")]
+impl Wallet {
+    /// Create a wallet with in-memory storage (for WASM).
+    pub fn new_memory(network: NetworkMode) -> Result<Self> {
+        let store: Box<dyn Store> = Box::new(store::mem::MemStore::new());
+        let wallet = Wallet {
+            path: PathBuf::from(":memory:"),
+            store,
+            network,
+        };
+        wallet.get_or_generate_master_secret()?;
+        Ok(wallet)
+    }
+
+    /// Create from JSON state (loaded from IndexedDB by JS).
+    pub fn from_json(json: &str, network: NetworkMode) -> Result<Self> {
+        let store: Box<dyn Store> = Box::new(store::mem::MemStore::from_json(json)?);
+        Ok(Wallet {
+            path: PathBuf::from(":memory:"),
+            store,
+            network,
+        })
+    }
+
+    /// Serialize state to JSON (for JS to save to IndexedDB).
+    pub fn to_json(&self) -> Result<String> {
+        // Downcast to MemStore
+        let mem = self.store.as_any().downcast_ref::<store::mem::MemStore>()
+            .ok_or_else(|| Error::wallet("Not a MemStore"))?;
+        mem.to_json()
+    }
+}
+
+// ── Shared methods ───────────────────────────────────────────────
+
+impl Wallet {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn network(&self) -> &NetworkMode {
+        &self.network
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 impl Drop for Wallet {
     fn drop(&mut self) {
         if self.is_encrypted {
