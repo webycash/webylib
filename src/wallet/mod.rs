@@ -18,6 +18,7 @@ pub mod encryption;
 pub mod operations;
 pub mod schema;
 pub mod snapshot;
+pub mod store;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
