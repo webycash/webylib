@@ -25,26 +25,33 @@
 //! # }
 //! ```
 
+// ── Always available (WASM-safe) ────────────────────────────────
 pub mod amount;
 pub mod crypto;
 pub mod error;
-#[cfg(feature = "ffi")]
-pub mod ffi;
 pub mod hd;
-pub mod passkey;
 pub mod protocol;
 pub mod server;
-pub mod wallet;
 pub mod webcash;
 
-// Re-exports — flat access to the most common types
+// ── Native-only (SQLite, tokio, reqwest, keyring) ───────────────
+#[cfg(feature = "native")]
+pub mod passkey;
+#[cfg(feature = "native")]
+pub mod wallet;
+#[cfg(feature = "native")]
+pub mod miner;
+#[cfg(feature = "ffi")]
+pub mod ffi;
+
+// ── Re-exports ──────────────────────────────────────────────────
 pub use amount::Amount;
 pub use error::{Error, Result};
 pub use hd::ChainCode;
 pub use protocol::{TERMS_OF_SERVICE, VERSION};
-pub mod miner;
-
 pub use server::endpoints;
 pub use server::NetworkMode;
-pub use wallet::{Wallet, WalletSnapshot, WalletStats};
 pub use webcash::{PublicWebcash, SecretWebcash};
+
+#[cfg(feature = "native")]
+pub use wallet::{Wallet, WalletSnapshot, WalletStats};

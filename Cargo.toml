@@ -4,7 +4,7 @@ members = [".", "crates/webylib-wasm"]
 
 [package]
 name = "webylib"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 rust-version = "1.85"
 description = "Webcash HD wallet library — bearer e-cash with BIP32-style key derivation, SQLite storage, AES-256-GCM encryption, and full C FFI for cross-platform SDKs"
@@ -38,58 +38,62 @@ path = "src/bin/cli.rs"
 required-features = ["cli"]
 
 [dependencies]
-# Core
+# ── Always available (WASM-safe) ────────────────────────────────
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
 anyhow = "1.0"
-tokio = { version = "1.0", features = ["full"] }
 async-trait = "0.1"
-
-# Cryptography
 sha2 = "0.10"
 hmac = "0.12"
 rand = "0.9"
 rand_chacha = "0.9"
-getrandom = "0.2"
 aes-gcm = "0.10"
 argon2 = "0.5"
 hkdf = "0.12"
-
-# Database
-rusqlite = { version = "0.37.0", features = ["bundled"] }
-
-# HTTP client — rustls-tls only (no OpenSSL), enables cross-compilation
-reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
-
-# CLI (optional — not needed by library consumers)
-clap = { version = "4.0", features = ["derive"], optional = true }
-rpassword = { version = "7.3", optional = true }
-dirs-next = { version = "2", optional = true }
-
-# Utilities
 hex = "0.4"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
 uuid = { version = "1.0", features = ["v4"] }
 url = "2.5"
-
-# Security
 zeroize = { version = "1.5", features = ["derive"] }
 
-# Passkey: platform-specific secure key storage
-# macOS/iOS: Keychain (Touch ID / Apple Watch / device passcode)
-# Linux/Windows/FreeBSD: keyring crate (libsecret / Windows Credential Manager / file-based)
-keyring = { version = "3", features = ["apple-native", "linux-native", "windows-native"] }
+# getrandom: native uses default, WASM uses js feature
+getrandom = "0.2"
+getrandom_0_3 = { package = "getrandom", version = "0.3" }
+
+# ── Native-only (optional) ──────────────────────────────────────
+tokio = { version = "1.0", features = ["full"], optional = true }
+rusqlite = { version = "0.37.0", features = ["bundled"], optional = true }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"], optional = true }
+keyring = { version = "3", features = ["apple-native", "linux-native", "windows-native"], optional = true }
+
+# CLI (optional)
+clap = { version = "4.0", features = ["derive"], optional = true }
+rpassword = { version = "7.3", optional = true }
+dirs-next = { version = "2", optional = true }
 
 [dev-dependencies]
 tempfile = "3.0"
 mockito = "1.7.0"
 
 [features]
-default = ["bundled-sqlite", "cli"]
-bundled-sqlite = ["rusqlite/bundled"]
+default = ["native", "cli"]
+
+# Native: SQLite storage, HTTP client, async runtime, keyring
+native = [
+    "dep:tokio",
+    "dep:rusqlite",
+    "dep:reqwest",
+    "dep:keyring",
+    "bundled-sqlite",
+]
+bundled-sqlite = ["rusqlite?/bundled"]
+
+# WASM target support
+wasm = ["getrandom/js", "getrandom_0_3/wasm_js", "uuid/js"]
+
 ffi = []
 cli = ["dep:clap", "dep:rpassword", "dep:dirs-next"]
 passkey = []

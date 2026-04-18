@@ -11,6 +11,7 @@ pub enum Error {
     Io(#[from] std::io::Error),
 
     /// Database errors
+    #[cfg(feature = "native")]
     #[error("Database error: {0}")]
     Database(#[from] rusqlite::Error),
 
@@ -19,6 +20,7 @@ pub enum Error {
     Json(#[from] serde_json::Error),
 
     /// HTTP client errors
+    #[cfg(feature = "native")]
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
@@ -143,8 +145,10 @@ impl Error {
     pub fn with_context<S: Into<String>>(self, context: S) -> Self {
         match self {
             Error::Io(e) => Error::Io(e),
+            #[cfg(feature = "native")]
             Error::Database(e) => Error::Database(e),
             Error::Json(e) => Error::Json(e),
+            #[cfg(feature = "native")]
             Error::Http(e) => Error::Http(e),
             Error::Parse { message } => Error::Parse {
                 message: format!("{}: {}", context.into(), message),

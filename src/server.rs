@@ -3,11 +3,14 @@
 //! This module handles HTTP communication with the Webcash server for operations
 //! like health checks, replacements, target queries, and mining report submissions.
 
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "native")]
 use crate::error::{Error, Result};
+#[cfg(feature = "native")]
 use crate::webcash::PublicWebcash;
+#[cfg(feature = "native")]
+use reqwest::Client;
 
 /// Webcash server API endpoints
 pub mod endpoints {
@@ -45,7 +48,17 @@ impl NetworkMode {
     }
 }
 
+/// Full API URL for an endpoint on a given network.
+impl NetworkMode {
+    pub fn endpoint_url(&self, endpoint: &str) -> String {
+        format!("{}{}", self.base_url(), endpoint)
+    }
+}
+
+// ── Native-only: HTTP client ────────────────────────────────────
+
 /// Cross-platform server client trait
+#[cfg(feature = "native")]
 #[async_trait::async_trait]
 pub trait ServerClientTrait {
     async fn health_check(&self, webcash: &[PublicWebcash]) -> Result<HealthResponse>;
@@ -57,6 +70,7 @@ pub trait ServerClientTrait {
     ) -> Result<MiningReportResponse>;
 }
 
+#[cfg(feature = "native")]
 /// Server configuration
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
@@ -66,6 +80,7 @@ pub struct ServerConfig {
     pub timeout_seconds: u64,
 }
 
+#[cfg(feature = "native")]
 impl ServerConfig {
     /// Base URL derived from the network mode.
     pub fn base_url(&self) -> &str {
@@ -73,6 +88,7 @@ impl ServerConfig {
     }
 }
 
+#[cfg(feature = "native")]
 impl Default for ServerConfig {
     fn default() -> Self {
         ServerConfig {
@@ -82,6 +98,7 @@ impl Default for ServerConfig {
     }
 }
 
+#[cfg(feature = "native")]
 /// Webcash server client (Clone shares connection pool)
 #[derive(Clone)]
 pub struct ServerClient {
@@ -89,6 +106,7 @@ pub struct ServerClient {
     config: ServerConfig,
 }
 
+#[cfg(feature = "native")]
 impl ServerClient {
     /// Create a new server client with default configuration
     pub fn new() -> Result<Self> {
@@ -184,6 +202,7 @@ impl ServerClient {
     }
 }
 
+#[cfg(feature = "native")]
 #[async_trait::async_trait]
 impl ServerClientTrait for ServerClient {
     async fn health_check(&self, webcash: &[PublicWebcash]) -> Result<HealthResponse> {
