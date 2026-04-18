@@ -19,12 +19,12 @@ pub mod store;
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
-use crate::server::{NetworkMode, ServerClientTrait};
+use crate::server::{NetworkMode, ServerClient, ServerConfig};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::server::ServerClientTrait;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::passkey::{EncryptionConfig, PasskeyEncryption};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::server::{ServerClient, ServerConfig};
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::Mutex;
 
@@ -35,9 +35,14 @@ pub use store::Store;
 /// Webcash wallet with pluggable storage backend.
 pub struct Wallet {
     pub(crate) path: PathBuf,
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) store: Box<dyn Store + Send + Sync>,
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) store: Box<dyn Store>,
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) server_client: tokio::sync::Mutex<Box<dyn ServerClientTrait + Send>>,
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) server_client: ServerClient,
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) passkey_encryption: Option<Mutex<PasskeyEncryption>>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -205,9 +210,12 @@ impl Wallet {
     /// Create a wallet with in-memory storage (for WASM).
     pub fn new_memory(network: NetworkMode) -> Result<Self> {
         let store: Box<dyn Store> = Box::new(store::mem::MemStore::new());
+        let config = ServerConfig { network: network.clone(), timeout_seconds: 30 };
+        let server_client = ServerClient::with_config(config)?;
         let wallet = Wallet {
             path: PathBuf::from(":memory:"),
             store,
+            server_client,
             network,
         };
         wallet.get_or_generate_master_secret()?;
@@ -217,16 +225,18 @@ impl Wallet {
     /// Create from JSON state (loaded from IndexedDB by JS).
     pub fn from_json(json: &str, network: NetworkMode) -> Result<Self> {
         let store: Box<dyn Store> = Box::new(store::mem::MemStore::from_json(json)?);
+        let config = ServerConfig { network: network.clone(), timeout_seconds: 30 };
+        let server_client = ServerClient::with_config(config)?;
         Ok(Wallet {
             path: PathBuf::from(":memory:"),
             store,
+            server_client,
             network,
         })
     }
 
     /// Serialize state to JSON (for JS to save to IndexedDB).
     pub fn to_json(&self) -> Result<String> {
-        // Downcast to MemStore
         let mem = self.store.as_any().downcast_ref::<store::mem::MemStore>()
             .ok_or_else(|| Error::wallet("Not a MemStore"))?;
         mem.to_json()

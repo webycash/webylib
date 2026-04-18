@@ -37,7 +37,7 @@ pub mod webcash;
 // ── Native-only (SQLite, tokio, reqwest, keyring) ───────────────
 #[cfg(feature = "native")]
 pub mod passkey;
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm"))]
 pub mod wallet;
 #[cfg(feature = "native")]
 pub mod miner;
@@ -53,5 +53,5 @@ pub use server::endpoints;
 pub use server::NetworkMode;
 pub use webcash::{PublicWebcash, SecretWebcash};
 
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm"))]
 pub use wallet::{Wallet, WalletSnapshot, WalletStats};

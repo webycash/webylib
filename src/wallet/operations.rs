@@ -11,7 +11,6 @@ use crate::error::{Error, Result};
 use crate::hd::HDWallet;
 use crate::webcash::{PublicWebcash, SecretWebcash, SecureString};
 
-#[cfg(not(target_arch = "wasm32"))]
 use crate::server::{Legalese, ReplaceRequest};
 
 /// Statistics about the wallet.
@@ -143,7 +142,6 @@ impl Wallet {
         self.insert_with_validation(webcash, false).await
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     pub async fn insert_with_validation(&self, webcash: SecretWebcash, validate_with_server: bool) -> Result<()> {
         log::debug!("Starting webcash insertion with ownership transfer");
 
@@ -163,10 +161,8 @@ impl Wallet {
             legalese: Legalese { terms: true },
         };
 
-        let server = self.server_client.lock().await;
-        match server.replace(&replace_request).await {
+        match self.server_replace(&replace_request).await {
             Ok(resp) if resp.status == "success" => {
-                drop(server);
                 log::info!("Server replacement successful — ownership transferred");
                 let new_secret_str = new_webcash.secret.as_str()
                     .map_err(|_| Error::wallet("Invalid new secret encoding"))?;
@@ -179,8 +175,7 @@ impl Wallet {
             Err(Error::Server { ref message }) if message.contains("can only be replaced by itself") => {
                 log::info!("Same-lineage secret webcash detected, storing directly without replace");
                 let public_webcash = webcash.to_public();
-                let health_response = server.health_check(std::slice::from_ref(&public_webcash)).await?;
-                drop(server);
+                let health_response = self.server_health_check(std::slice::from_ref(&public_webcash)).await?;
                 if health_response.status != "success" {
                     return Err(Error::server("Health check failed for same-lineage fallback"));
                 }
@@ -196,11 +191,9 @@ impl Wallet {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     async fn validate_input_webcash(&self, webcash: &SecretWebcash) -> Result<()> {
-        let server = self.server_client.lock().await;
         let public_webcash = webcash.to_public();
-        let health = server.health_check(std::slice::from_ref(&public_webcash)).await?;
+        let health = self.server_health_check(std::slice::from_ref(&public_webcash)).await?;
         if health.status != "success" { return Err(Error::server("Server validation failed")); }
         if let Some(result) = health.results.get(&public_webcash.to_string()) {
             if let Some(true) = result.spent { return Err(Error::wallet("Input webcash has been spent")); }
@@ -220,7 +213,6 @@ impl Wallet {
 
 // ── Pay ─────────────────────────────────────────────────────────────
 
-#[cfg(not(target_arch = "wasm32"))]
 impl Wallet {
     pub async fn pay(&self, amount: Amount, memo: &str) -> Result<String> {
         log::info!("Starting payment: amount={}, memo={}", amount, memo);
@@ -254,15 +246,12 @@ impl Wallet {
             legalese: Legalese { terms: true },
         };
 
-        let server = self.server_client.lock().await;
-        let response = server.replace(&replace_request).await?;
-        drop(server);
+        let response = self.server_replace(&replace_request).await?;
 
         if response.status != "success" {
             return Err(Error::server("Payment transaction failed"));
         }
 
-        // Mark inputs spent
         for input in &inputs {
             let secret_str = input.secret.as_str().unwrap_or("");
             let secret_hash = crate::crypto::sha256(secret_str.as_bytes());
@@ -270,7 +259,6 @@ impl Wallet {
             self.store.insert_spent_hash(&secret_hash)?;
         }
 
-        // Store change
         if let Some(ref cw) = change_webcash {
             let s = cw.secret.as_str().map_err(|_| Error::wallet("Invalid change secret"))?;
             let h = crate::crypto::sha256(s.as_bytes());
@@ -319,7 +307,6 @@ impl Wallet {
 
 // ── Check ───────────────────────────────────────────────────────────
 
-#[cfg(not(target_arch = "wasm32"))]
 impl Wallet {
     pub async fn check(&self) -> Result<CheckResult> {
         let public_webcash_list = self.list_public_webcash().await?;
@@ -327,9 +314,7 @@ impl Wallet {
             return Ok(CheckResult { valid_count: 0, spent_count: 0, unknown_count: 0 });
         }
 
-        let server = self.server_client.lock().await;
-        let health_response = server.health_check(&public_webcash_list).await?;
-        drop(server);
+        let health_response = self.server_health_check(&public_webcash_list).await?;
 
         if health_response.status != "success" {
             return Err(Error::server("Server returned non-success status"));
@@ -347,7 +332,6 @@ impl Wallet {
 
 // ── Merge ───────────────────────────────────────────────────────────
 
-#[cfg(not(target_arch = "wasm32"))]
 impl Wallet {
     pub async fn merge(&self, max_outputs: usize) -> Result<String> {
         log::info!("Starting output consolidation");
@@ -372,9 +356,7 @@ impl Wallet {
             legalese: Legalese { terms: true },
         };
 
-        let server = self.server_client.lock().await;
-        let response = server.replace(&replace_request).await?;
-        drop(server);
+        let response = self.server_replace(&replace_request).await?;
 
         if response.status != "success" { return Err(Error::server("Consolidation transaction failed")); }
 
@@ -396,7 +378,6 @@ impl Wallet {
 
 // ── Recover ─────────────────────────────────────────────────────────
 
-#[cfg(not(target_arch = "wasm32"))]
 impl Wallet {
     pub async fn recover_from_wallet(&self, gap_limit: usize) -> Result<RecoveryResult> {
         match self.store.get_meta("master_secret")? {
@@ -466,9 +447,7 @@ impl Wallet {
                     batch_webcash.push(public_webcash);
                 }
 
-                let server = self.server_client.lock().await;
-                let health_result = server.health_check(&batch_webcash).await;
-                drop(server);
+                let health_result = self.server_health_check(&batch_webcash).await;
 
                 match health_result {
                     Ok(response) => {
@@ -553,5 +532,47 @@ impl Wallet {
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn mine(&self) -> Result<crate::miner::MineResult> {
         crate::miner::mine(self).await
+    }
+}
+
+// ── Server access helpers ──────────────────────────────────────────
+//
+// Abstract the Mutex (native) vs direct access (WASM) difference.
+
+use crate::server::{HealthResponse, ReplaceResponse};
+
+impl Wallet {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) async fn server_replace(&self, req: &ReplaceRequest) -> Result<ReplaceResponse> {
+        self.server_client.lock().await.replace(req).await
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) async fn server_replace(&self, req: &ReplaceRequest) -> Result<ReplaceResponse> {
+        self.server_client.replace(req).await
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) async fn server_health_check(&self, webcash: &[PublicWebcash]) -> Result<HealthResponse> {
+        self.server_client.lock().await.health_check(webcash).await
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) async fn server_health_check(&self, webcash: &[PublicWebcash]) -> Result<HealthResponse> {
+        self.server_client.health_check(webcash).await
+    }
+
+    pub async fn server_get_target(&self) -> Result<crate::server::TargetResponse> {
+        #[cfg(not(target_arch = "wasm32"))]
+        { self.server_client.lock().await.get_target().await }
+        #[cfg(target_arch = "wasm32")]
+        { self.server_client.get_target().await }
+    }
+
+    pub async fn server_submit_mining_report(&self, report: &crate::server::MiningReportRequest) -> Result<crate::server::MiningReportResponse> {
+        #[cfg(not(target_arch = "wasm32"))]
+        { self.server_client.lock().await.submit_mining_report(report).await }
+        #[cfg(target_arch = "wasm32")]
+        { self.server_client.submit_mining_report(report).await }
     }
 }
