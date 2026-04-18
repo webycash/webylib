@@ -5,11 +5,11 @@
 
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm"))]
 use crate::error::{Error, Result};
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm"))]
 use crate::webcash::PublicWebcash;
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm"))]
 use reqwest::Client;
 
 /// Webcash server API endpoints
@@ -58,8 +58,9 @@ impl NetworkMode {
 // ── Native-only: HTTP client ────────────────────────────────────
 
 /// Cross-platform server client trait
-#[cfg(feature = "native")]
-#[async_trait::async_trait]
+#[cfg(any(feature = "native", feature = "wasm"))]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 pub trait ServerClientTrait {
     async fn health_check(&self, webcash: &[PublicWebcash]) -> Result<HealthResponse>;
     async fn replace(&self, request: &ReplaceRequest) -> Result<ReplaceResponse>;
@@ -70,7 +71,7 @@ pub trait ServerClientTrait {
     ) -> Result<MiningReportResponse>;
 }
 
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm"))]
 /// Server configuration
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
@@ -80,7 +81,7 @@ pub struct ServerConfig {
     pub timeout_seconds: u64,
 }
 
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm"))]
 impl ServerConfig {
     /// Base URL derived from the network mode.
     pub fn base_url(&self) -> &str {
@@ -88,7 +89,7 @@ impl ServerConfig {
     }
 }
 
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm"))]
 impl Default for ServerConfig {
     fn default() -> Self {
         ServerConfig {
@@ -98,7 +99,7 @@ impl Default for ServerConfig {
     }
 }
 
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm"))]
 /// Webcash server client (Clone shares connection pool)
 #[derive(Clone)]
 pub struct ServerClient {
@@ -106,7 +107,7 @@ pub struct ServerClient {
     config: ServerConfig,
 }
 
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm"))]
 impl ServerClient {
     /// Create a new server client with default configuration
     pub fn new() -> Result<Self> {
@@ -115,13 +116,14 @@ impl ServerClient {
 
     /// Create a new server client with custom configuration
     pub fn with_config(config: ServerConfig) -> Result<Self> {
-        let client = Client::builder()
+        let builder = Client::builder();
+        #[cfg(not(target_arch = "wasm32"))]
+        let builder = builder
             .timeout(std::time::Duration::from_secs(config.timeout_seconds))
             .pool_max_idle_per_host(10000)
             .pool_idle_timeout(std::time::Duration::from_secs(90))
-            .tcp_nodelay(true)
-            .build()?;
-
+            .tcp_nodelay(true);
+        let client = builder.build()?;
         Ok(ServerClient { client, config })
     }
 
@@ -202,8 +204,9 @@ impl ServerClient {
     }
 }
 
-#[cfg(feature = "native")]
-#[async_trait::async_trait]
+#[cfg(any(feature = "native", feature = "wasm"))]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl ServerClientTrait for ServerClient {
     async fn health_check(&self, webcash: &[PublicWebcash]) -> Result<HealthResponse> {
         self.health_check(webcash).await

@@ -20,7 +20,7 @@ pub enum Error {
     Json(#[from] serde_json::Error),
 
     /// HTTP client errors
-    #[cfg(feature = "native")]
+    #[cfg(any(feature = "native", feature = "wasm"))]
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
@@ -148,7 +148,7 @@ impl Error {
             #[cfg(feature = "native")]
             Error::Database(e) => Error::Database(e),
             Error::Json(e) => Error::Json(e),
-            #[cfg(feature = "native")]
+            #[cfg(any(feature = "native", feature = "wasm"))]
             Error::Http(e) => Error::Http(e),
             Error::Parse { message } => Error::Parse {
                 message: format!("{}: {}", context.into(), message),
