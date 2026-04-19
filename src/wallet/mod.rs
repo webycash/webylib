@@ -189,6 +189,69 @@ impl Wallet {
         Ok(wallet)
     }
 
+    /// Open a wallet backed by a JSON file. Creates the file if it doesn't exist.
+    pub fn open_json<P: AsRef<Path>>(path: P, network: NetworkMode) -> Result<Self> {
+        let path = path.as_ref().to_path_buf();
+        let json_store = store::json::JsonStore::open(path.clone())?;
+        let config = ServerConfig { network: network.clone(), timeout_seconds: 30 };
+        let server_client: Box<dyn ServerClientTrait + Send> =
+            Box::new(ServerClient::with_config(config)?);
+        let store: Box<dyn Store + Send + Sync> = Box::new(json_store);
+
+        let wallet = Wallet {
+            path,
+            store,
+            server_client: tokio::sync::Mutex::new(server_client),
+            passkey_encryption: None,
+            is_encrypted: false,
+            temp_db_path: None,
+            network,
+        };
+        wallet.get_or_generate_master_secret()?;
+        Ok(wallet)
+    }
+
+    /// Create an in-memory JSON wallet (no file persistence).
+    /// Use `to_json()` to retrieve the state.
+    pub fn open_json_memory(network: NetworkMode) -> Result<Self> {
+        let json_store = store::json::JsonStore::new(None);
+        let config = ServerConfig { network: network.clone(), timeout_seconds: 30 };
+        let server_client: Box<dyn ServerClientTrait + Send> =
+            Box::new(ServerClient::with_config(config)?);
+        let store: Box<dyn Store + Send + Sync> = Box::new(json_store);
+
+        let wallet = Wallet {
+            path: PathBuf::from(":json-memory:"),
+            store,
+            server_client: tokio::sync::Mutex::new(server_client),
+            passkey_encryption: None,
+            is_encrypted: false,
+            temp_db_path: None,
+            network,
+        };
+        wallet.get_or_generate_master_secret()?;
+        Ok(wallet)
+    }
+
+    /// Create from a JSON string (in-memory, no file persistence).
+    pub fn from_json_native(json: &str, network: NetworkMode) -> Result<Self> {
+        let json_store = store::json::JsonStore::from_json(json, None)?;
+        let config = ServerConfig { network: network.clone(), timeout_seconds: 30 };
+        let server_client: Box<dyn ServerClientTrait + Send> =
+            Box::new(ServerClient::with_config(config)?);
+        let store: Box<dyn Store + Send + Sync> = Box::new(json_store);
+
+        Ok(Wallet {
+            path: PathBuf::from(":json-memory:"),
+            store,
+            server_client: tokio::sync::Mutex::new(server_client),
+            passkey_encryption: None,
+            is_encrypted: false,
+            temp_db_path: None,
+            network,
+        })
+    }
+
     pub async fn close(mut self) -> Result<()> {
         if self.is_encrypted {
             self.encrypt_database().await?;
@@ -235,12 +298,6 @@ impl Wallet {
         })
     }
 
-    /// Serialize state to JSON (for JS to save to IndexedDB).
-    pub fn to_json(&self) -> Result<String> {
-        let mem = self.store.as_any().downcast_ref::<store::mem::MemStore>()
-            .ok_or_else(|| Error::wallet("Not a MemStore"))?;
-        mem.to_json()
-    }
 }
 
 // ── Shared methods ───────────────────────────────────────────────
@@ -252,6 +309,24 @@ impl Wallet {
 
     pub fn network(&self) -> &NetworkMode {
         &self.network
+    }
+
+    /// Serialize wallet state to JSON.
+    /// Works with MemStore (WASM) and JsonStore (native).
+    pub fn to_json(&self) -> Result<String> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let mem = self.store.as_any().downcast_ref::<store::mem::MemStore>()
+                .ok_or_else(|| Error::wallet("Store does not support JSON serialization"))?;
+            return mem.to_json();
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if let Some(json_store) = self.store.as_any().downcast_ref::<store::json::JsonStore>() {
+                return json_store.to_json();
+            }
+            Err(Error::wallet("Store does not support JSON serialization (use JsonStore or MemStore)"))
+        }
     }
 }
 

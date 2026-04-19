@@ -252,23 +252,29 @@ impl Wallet {
             return Err(Error::server("Payment transaction failed"));
         }
 
-        for input in &inputs {
-            let secret_str = input.secret.as_str().unwrap_or("");
-            let secret_hash = crate::crypto::sha256(secret_str.as_bytes());
-            self.store.mark_spent(&secret_hash)?;
-            self.store.insert_spent_hash(&secret_hash)?;
-        }
-
-        if let Some(ref cw) = change_webcash {
-            let s = cw.secret.as_str().map_err(|_| Error::wallet("Invalid change secret"))?;
+        // Atomic: mark inputs spent + store change + update depths
+        let change_data = change_webcash.as_ref().map(|cw| {
+            let s = cw.secret.as_str().unwrap_or("".into());
             let h = crate::crypto::sha256(s.as_bytes());
-            self.store.insert_output(&h, s, cw.amount.wats)?;
-        }
-
-        self.store.set_depth("PAY", pay_depth + 1)?;
-        if change_webcash.is_some() {
-            self.store.set_depth("CHANGE", change_depth + 1)?;
-        }
+            (h, s.to_string(), cw.amount.wats)
+        });
+        let has_change = change_webcash.is_some();
+        self.store.atomic(&mut |store| {
+            for input in &inputs {
+                let secret_str = input.secret.as_str().unwrap_or("");
+                let secret_hash = crate::crypto::sha256(secret_str.as_bytes());
+                store.mark_spent(&secret_hash)?;
+                store.insert_spent_hash(&secret_hash)?;
+            }
+            if let Some((ref h, ref s, wats)) = change_data {
+                store.insert_output(h, s, wats)?;
+            }
+            store.set_depth("PAY", pay_depth + 1)?;
+            if has_change {
+                store.set_depth("CHANGE", change_depth + 1)?;
+            }
+            Ok(())
+        })?;
 
         Ok(format!("Payment completed! Send this webcash to recipient: {}", payment_webcash))
     }
@@ -360,19 +366,24 @@ impl Wallet {
 
         if response.status != "success" { return Err(Error::server("Consolidation transaction failed")); }
 
-        for input in webcash_to_merge {
-            let s = input.secret.as_str().unwrap_or("");
-            let h = crate::crypto::sha256(s.as_bytes());
-            self.store.mark_spent(&h)?;
-            self.store.insert_spent_hash(&h)?;
-        }
-
-        let cs = consolidated_webcash.secret.as_str().map_err(|_| Error::wallet("Invalid consolidated secret"))?;
+        let cs = consolidated_webcash.secret.as_str().map_err(|_| Error::wallet("Invalid consolidated secret"))?.to_string();
         let ch = crate::crypto::sha256(cs.as_bytes());
-        self.store.insert_output(&ch, cs, consolidated_webcash.amount.wats)?;
-        self.store.set_depth("CHANGE", change_depth + 1)?;
+        let cons_wats = consolidated_webcash.amount.wats;
+        let merge_count = webcash_to_merge.len();
 
-        Ok(format!("Consolidation completed: {} outputs merged, total {} preserved", webcash_to_merge.len(), total_amount))
+        self.store.atomic(&mut |store| {
+            for input in webcash_to_merge {
+                let s = input.secret.as_str().unwrap_or("");
+                let h = crate::crypto::sha256(s.as_bytes());
+                store.mark_spent(&h)?;
+                store.insert_spent_hash(&h)?;
+            }
+            store.insert_output(&ch, &cs, cons_wats)?;
+            store.set_depth("CHANGE", change_depth + 1)?;
+            Ok(())
+        })?;
+
+        Ok(format!("Consolidation completed: {} outputs merged, total {} preserved", merge_count, total_amount))
     }
 }
 

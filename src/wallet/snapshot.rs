@@ -28,7 +28,8 @@ pub struct SpentHashSnapshot {
     pub spent_at: String,
 }
 
-/// Internal export format for encryption/backup.
+/// Internal export format for encryption/backup (native only).
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct WalletExport {
     pub version: String,
@@ -63,27 +64,30 @@ impl Wallet {
     }
 
     pub fn import_snapshot(&self, snapshot: &WalletSnapshot) -> Result<()> {
-        self.store.clear_all()?;
-        self.store.set_meta("master_secret", &snapshot.master_secret)?;
+        self.store.atomic(&mut |store| {
+            store.clear_all()?;
+            store.set_meta("master_secret", &snapshot.master_secret)?;
 
-        for (code, depth) in &snapshot.depths {
-            self.store.set_depth(code, *depth as u64)?;
-        }
+            for (code, depth) in &snapshot.depths {
+                store.set_depth(code, *depth as u64)?;
+            }
 
-        for item in &snapshot.unspent_outputs {
-            let secret_hash = crate::crypto::sha256(item.secret.as_bytes());
-            self.store.insert_output(&secret_hash, &item.secret, item.amount)?;
-        }
+            for item in &snapshot.unspent_outputs {
+                let secret_hash = crate::crypto::sha256(item.secret.as_bytes());
+                store.insert_output(&secret_hash, &item.secret, item.amount)?;
+            }
 
-        for item in &snapshot.spent_hashes {
-            let hash_bytes = hex::decode(&item.hash)
-                .map_err(|_| crate::error::Error::wallet("Invalid hex in snapshot"))?;
-            self.store.insert_spent_hash(&hash_bytes)?;
-        }
+            for item in &snapshot.spent_hashes {
+                let hash_bytes = hex::decode(&item.hash)
+                    .map_err(|_| crate::error::Error::wallet("Invalid hex in snapshot"))?;
+                store.insert_spent_hash(&hash_bytes)?;
+            }
 
-        Ok(())
+            Ok(())
+        })
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) async fn export_wallet_data(&self) -> Result<Vec<u8>> {
         let metadata = self.store.get_all_meta()?;
         let outputs = self.store.get_all_outputs()?;
@@ -101,6 +105,7 @@ impl Wallet {
             .map_err(|e| crate::error::Error::wallet(format!("Failed to serialize wallet data: {}", e)))
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) async fn import_wallet_data(&self, data: &[u8]) -> Result<()> {
         let wallet_export: WalletExport = serde_json::from_slice(data)
             .map_err(|e| crate::error::Error::wallet(format!("Failed to deserialize wallet data: {}", e)))?;
