@@ -419,6 +419,7 @@ impl Wallet {
 
         let chain_codes = [
             ("RECEIVE", ChainCode::Receive),
+            ("PAY", ChainCode::Pay),
             ("CHANGE", ChainCode::Change),
             ("MINING", ChainCode::Mining),
         ];
@@ -505,7 +506,6 @@ impl Wallet {
                 if current_depth < reported_walletdepth { has_had_webcash = true; }
                 if has_had_webcash { current_depth += gap_limit as u64; }
                 if !has_had_webcash && consecutive_empty >= gap_limit as u64 { break; }
-                if current_depth > 1000 { log::warn!("Safety limit reached at depth {}", current_depth); break; }
             }
 
             if last_used_walletdepth > 0 && reported_walletdepth < last_used_walletdepth {

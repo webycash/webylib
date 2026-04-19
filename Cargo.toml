@@ -4,7 +4,7 @@ members = [".", "crates/webylib-wasm"]
 
 [package]
 name = "webylib"
-version = "0.3.6"
+version = "0.3.7"
 edition = "2021"
 rust-version = "1.85"
 description = "Webcash HD wallet library — bearer e-cash with BIP32-style key derivation, SQLite storage, AES-256-GCM encryption, and full C FFI for cross-platform SDKs"
