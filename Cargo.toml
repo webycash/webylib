@@ -4,7 +4,7 @@ members = [".", "crates/webylib-wasm"]
 
 [package]
 name = "webylib"
-version = "0.3.5"
+version = "0.3.6"
 edition = "2021"
 rust-version = "1.85"
 description = "Webcash HD wallet library — bearer e-cash with BIP32-style key derivation, SQLite storage, AES-256-GCM encryption, and full C FFI for cross-platform SDKs"
@@ -69,6 +69,13 @@ rusqlite = { version = "0.37.0", features = ["bundled"], optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json"], optional = true }
 keyring = { version = "3", features = ["apple-native", "linux-native", "windows-native"], optional = true }
 
+# WASM (optional)
+web-sys = { version = "0.3", features = ["DomStringList", "Event", "EventTarget", "IdbDatabase", "IdbFactory", "IdbObjectStore", "IdbOpenDbRequest", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbVersionChangeEvent", "Window"], optional = true }
+js-sys = { version = "0.3", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+futures-channel = { version = "0.3", optional = true }
+
 # CLI (optional)
 clap = { version = "4.0", features = ["derive"], optional = true }
 rpassword = { version = "7.3", optional = true }
@@ -92,8 +99,8 @@ native = [
 ]
 bundled-sqlite = ["rusqlite?/bundled"]
 
-# WASM: HTTP client via browser fetch, getrandom via JS
-wasm = ["dep:reqwest", "getrandom/js", "getrandom_0_3/wasm_js", "uuid/js"]
+# WASM: HTTP client via browser fetch, getrandom via JS, IndexedDB persistence
+wasm = ["dep:reqwest", "dep:web-sys", "dep:js-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:futures-channel", "getrandom/js", "getrandom_0_3/wasm_js", "uuid/js"]
 
 ffi = []
 cli = ["dep:clap", "dep:rpassword", "dep:dirs-next"]

@@ -10,6 +10,8 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod encryption;
+#[cfg(target_arch = "wasm32")]
+pub mod idb;
 pub mod operations;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod schema;
@@ -327,6 +329,45 @@ impl Wallet {
             }
             Err(Error::wallet("Store does not support JSON serialization (use JsonStore or MemStore)"))
         }
+    }
+}
+
+// ── IndexedDB persistence (WASM) ───────────────────────────────
+
+#[cfg(target_arch = "wasm32")]
+impl Wallet {
+    /// Save current wallet state to IndexedDB.
+    pub async fn save_to_idb(&self, key: &str) -> Result<()> {
+        let json = self.to_json()?;
+        let network_str = match &self.network {
+            NetworkMode::Production => "production",
+            NetworkMode::Testnet => "testnet",
+            NetworkMode::Custom(u) => u.as_str(),
+        };
+        idb::save(network_str, key, &json).await
+    }
+
+    /// Load wallet state from IndexedDB. Returns None if not found.
+    pub async fn open_from_idb(network: NetworkMode, key: &str) -> Result<Option<Self>> {
+        let network_str = match &network {
+            NetworkMode::Production => "production",
+            NetworkMode::Testnet => "testnet",
+            NetworkMode::Custom(u) => u.as_str(),
+        };
+        match idb::load(network_str, key).await? {
+            Some(json) => Ok(Some(Self::from_json(&json, network)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Delete wallet state from IndexedDB.
+    pub async fn delete_from_idb(network: &NetworkMode, key: &str) -> Result<()> {
+        let network_str = match network {
+            NetworkMode::Production => "production",
+            NetworkMode::Testnet => "testnet",
+            NetworkMode::Custom(u) => u.as_str(),
+        };
+        idb::delete(network_str, key).await
     }
 }
 
