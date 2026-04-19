@@ -127,15 +127,21 @@ impl ServerClient {
         Ok(ServerClient { client, config })
     }
 
+    /// POST JSON body. On WASM uses text/plain to avoid CORS preflight.
+    /// The webcash server parses JSON regardless of Content-Type.
+    fn post_json_body<B: serde::Serialize>(&self, url: &str, body: &B) -> Result<reqwest::RequestBuilder> {
+        let json_str = serde_json::to_string(body)?;
+        #[cfg(target_arch = "wasm32")]
+        { Ok(self.client.post(url).body(json_str)) }
+        #[cfg(not(target_arch = "wasm32"))]
+        { Ok(self.client.post(url).header("Content-Type", "application/json").body(json_str)) }
+    }
+
     /// Check the health status of webcash entries
     pub async fn health_check(&self, webcash: &[PublicWebcash]) -> Result<HealthResponse> {
-        let mut request_data = Vec::new();
-        for wc in webcash {
-            request_data.push(wc.to_string());
-        }
-
+        let request_data: Vec<String> = webcash.iter().map(|wc| wc.to_string()).collect();
         let url = format!("{}{}", self.config.base_url(), endpoints::HEALTH_CHECK);
-        let response = self.client.post(&url).json(&request_data).send().await?;
+        let response = self.post_json_body(&url, &request_data)?.send().await?;
 
         if !response.status().is_success() {
             return Err(Error::server("Health check request failed"));
@@ -148,14 +154,12 @@ impl ServerClient {
     /// Submit a replacement request to the server
     pub async fn replace(&self, request: &ReplaceRequest) -> Result<ReplaceResponse> {
         let url = format!("{}{}", self.config.base_url(), endpoints::REPLACE);
-
-        let response = self.client.post(&url).json(request).send().await?;
+        let response = self.post_json_body(&url, request)?.send().await?;
 
         let status = response.status();
         let response_text = response.text().await?;
 
         if !status.is_success() {
-            // Try to parse error response for detailed error message
             if let Ok(error_response) = serde_json::from_str::<serde_json::Value>(&response_text) {
                 if let Some(error_msg) = error_response.get("error").and_then(|v| v.as_str()) {
                     return Err(Error::server(format!(
@@ -193,7 +197,7 @@ impl ServerClient {
         report: &MiningReportRequest,
     ) -> Result<MiningReportResponse> {
         let url = format!("{}{}", self.config.base_url(), endpoints::MINING_REPORT);
-        let response = self.client.post(&url).json(report).send().await?;
+        let response = self.post_json_body(&url, report)?.send().await?;
 
         if !response.status().is_success() {
             return Err(Error::server("Mining report submission failed"));
