@@ -42,7 +42,7 @@ impl NetworkMode {
     pub fn base_url(&self) -> &str {
         match self {
             NetworkMode::Production => "https://webcash.org",
-            NetworkMode::Testnet => "https://ijztlzulpohnjlz6c6re6gxvca0pqoae.lambda-url.us-east-1.on.aws",
+            NetworkMode::Testnet => "https://weby.cash/api/webcash/testnet",
             NetworkMode::Custom(url) => url.as_str(),
         }
     }
