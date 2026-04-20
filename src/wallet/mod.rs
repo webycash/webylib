@@ -21,9 +21,9 @@ pub mod store;
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
-use crate::server::{NetworkMode, ServerClient, ServerConfig};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::server::ServerClientTrait;
+use crate::server::{NetworkMode, ServerClient, ServerConfig};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::passkey::{EncryptionConfig, PasskeyEncryption};
@@ -90,7 +90,9 @@ impl Wallet {
                 app_identifier: "com.webycash.webylib".to_string(),
                 service_name: format!(
                     "WalletEncryption_{}",
-                    path.file_name().and_then(|n| n.to_str()).unwrap_or("default")
+                    path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("default")
                 ),
                 require_auth_every_use: true,
                 auth_timeout_seconds: 0,
@@ -102,7 +104,8 @@ impl Wallet {
         };
 
         let server_client: Box<dyn ServerClientTrait + Send> = Box::new(ServerClient::new()?);
-        let store: Box<dyn Store + Send + Sync> = Box::new(store::sqlite::SqliteStore(Mutex::new(connection)));
+        let store: Box<dyn Store + Send + Sync> =
+            Box::new(store::sqlite::SqliteStore(Mutex::new(connection)));
 
         let wallet = Wallet {
             path,
@@ -120,7 +123,10 @@ impl Wallet {
     pub async fn open_with_network<P: AsRef<Path>>(path: P, network: NetworkMode) -> Result<Self> {
         use rusqlite::Connection;
 
-        let config = ServerConfig { network: network.clone(), timeout_seconds: 30 };
+        let config = ServerConfig {
+            network: network.clone(),
+            timeout_seconds: 30,
+        };
         let server_client: Box<dyn ServerClientTrait + Send> =
             Box::new(ServerClient::with_config(config)?);
 
@@ -131,7 +137,8 @@ impl Wallet {
         let connection = Connection::open(&path)?;
         schema::initialize_schema(&connection)?;
 
-        let store: Box<dyn Store + Send + Sync> = Box::new(store::sqlite::SqliteStore(Mutex::new(connection)));
+        let store: Box<dyn Store + Send + Sync> =
+            Box::new(store::sqlite::SqliteStore(Mutex::new(connection)));
 
         let wallet = Wallet {
             path,
@@ -172,11 +179,15 @@ impl Wallet {
         let connection = Connection::open_in_memory()?;
         schema::initialize_schema(&connection)?;
 
-        let config = ServerConfig { network: network.clone(), timeout_seconds: 30 };
+        let config = ServerConfig {
+            network: network.clone(),
+            timeout_seconds: 30,
+        };
         let server_client: Box<dyn ServerClientTrait + Send> =
             Box::new(ServerClient::with_config(config)?);
 
-        let store: Box<dyn Store + Send + Sync> = Box::new(store::sqlite::SqliteStore(Mutex::new(connection)));
+        let store: Box<dyn Store + Send + Sync> =
+            Box::new(store::sqlite::SqliteStore(Mutex::new(connection)));
 
         let wallet = Wallet {
             path: PathBuf::from(":memory:"),
@@ -195,7 +206,10 @@ impl Wallet {
     pub fn open_json<P: AsRef<Path>>(path: P, network: NetworkMode) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
         let json_store = store::json::JsonStore::open(path.clone())?;
-        let config = ServerConfig { network: network.clone(), timeout_seconds: 30 };
+        let config = ServerConfig {
+            network: network.clone(),
+            timeout_seconds: 30,
+        };
         let server_client: Box<dyn ServerClientTrait + Send> =
             Box::new(ServerClient::with_config(config)?);
         let store: Box<dyn Store + Send + Sync> = Box::new(json_store);
@@ -217,7 +231,10 @@ impl Wallet {
     /// Use `to_json()` to retrieve the state.
     pub fn open_json_memory(network: NetworkMode) -> Result<Self> {
         let json_store = store::json::JsonStore::new(None);
-        let config = ServerConfig { network: network.clone(), timeout_seconds: 30 };
+        let config = ServerConfig {
+            network: network.clone(),
+            timeout_seconds: 30,
+        };
         let server_client: Box<dyn ServerClientTrait + Send> =
             Box::new(ServerClient::with_config(config)?);
         let store: Box<dyn Store + Send + Sync> = Box::new(json_store);
@@ -238,7 +255,10 @@ impl Wallet {
     /// Create from a JSON string (in-memory, no file persistence).
     pub fn from_json_native(json: &str, network: NetworkMode) -> Result<Self> {
         let json_store = store::json::JsonStore::from_json(json, None)?;
-        let config = ServerConfig { network: network.clone(), timeout_seconds: 30 };
+        let config = ServerConfig {
+            network: network.clone(),
+            timeout_seconds: 30,
+        };
         let server_client: Box<dyn ServerClientTrait + Send> =
             Box::new(ServerClient::with_config(config)?);
         let store: Box<dyn Store + Send + Sync> = Box::new(json_store);
@@ -275,7 +295,10 @@ impl Wallet {
     /// Create a wallet with in-memory storage (for WASM).
     pub fn new_memory(network: NetworkMode) -> Result<Self> {
         let store: Box<dyn Store> = Box::new(store::mem::MemStore::new());
-        let config = ServerConfig { network: network.clone(), timeout_seconds: 30 };
+        let config = ServerConfig {
+            network: network.clone(),
+            timeout_seconds: 30,
+        };
         let server_client = ServerClient::with_config(config)?;
         let wallet = Wallet {
             path: PathBuf::from(":memory:"),
@@ -290,7 +313,10 @@ impl Wallet {
     /// Create from JSON state (loaded from IndexedDB by JS).
     pub fn from_json(json: &str, network: NetworkMode) -> Result<Self> {
         let store: Box<dyn Store> = Box::new(store::mem::MemStore::from_json(json)?);
-        let config = ServerConfig { network: network.clone(), timeout_seconds: 30 };
+        let config = ServerConfig {
+            network: network.clone(),
+            timeout_seconds: 30,
+        };
         let server_client = ServerClient::with_config(config)?;
         Ok(Wallet {
             path: PathBuf::from(":memory:"),
@@ -299,7 +325,6 @@ impl Wallet {
             network,
         })
     }
-
 }
 
 // ── Shared methods ───────────────────────────────────────────────
@@ -318,7 +343,10 @@ impl Wallet {
     pub fn to_json(&self) -> Result<String> {
         #[cfg(target_arch = "wasm32")]
         {
-            let mem = self.store.as_any().downcast_ref::<store::mem::MemStore>()
+            let mem = self
+                .store
+                .as_any()
+                .downcast_ref::<store::mem::MemStore>()
                 .ok_or_else(|| Error::wallet("Store does not support JSON serialization"))?;
             return mem.to_json();
         }
@@ -327,7 +355,9 @@ impl Wallet {
             if let Some(json_store) = self.store.as_any().downcast_ref::<store::json::JsonStore>() {
                 return json_store.to_json();
             }
-            Err(Error::wallet("Store does not support JSON serialization (use JsonStore or MemStore)"))
+            Err(Error::wallet(
+                "Store does not support JSON serialization (use JsonStore or MemStore)",
+            ))
         }
     }
 }

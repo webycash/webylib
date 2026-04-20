@@ -39,7 +39,11 @@ pub struct RecoveryResult {
 
 impl std::fmt::Display for RecoveryResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Recovery completed! Webcash recovered: {}, Total amount: {}", self.recovered_count, self.total_amount)
+        write!(
+            f,
+            "Recovery completed! Webcash recovered: {}, Total amount: {}",
+            self.recovered_count, self.total_amount
+        )
     }
 }
 
@@ -50,8 +54,9 @@ impl Wallet {
         match self.store.get_meta("master_secret")? {
             Some(secret) => Ok(secret),
             None => {
-                let master_secret = crate::crypto::CryptoSecret::generate()
-                    .map_err(|e| Error::crypto(format!("Failed to generate master secret: {}", e)))?;
+                let master_secret = crate::crypto::CryptoSecret::generate().map_err(|e| {
+                    Error::crypto(format!("Failed to generate master secret: {}", e))
+                })?;
                 let hex = master_secret.to_hex();
                 self.store.set_meta("master_secret", &hex)?;
                 log::info!("Generated new master secret using hardware RNG");
@@ -71,7 +76,10 @@ impl Wallet {
     fn validate_master_secret(&self, hex: &str) -> Result<[u8; 32]> {
         let bytes = hex::decode(hex).map_err(|_| Error::wallet("Invalid master secret format"))?;
         if bytes.len() != 32 {
-            return Err(Error::wallet(format!("Master secret must be 32 bytes, got {}", bytes.len())));
+            return Err(Error::wallet(format!(
+                "Master secret must be 32 bytes, got {}",
+                bytes.len()
+            )));
         }
         let mut arr = [0u8; 32];
         arr.copy_from_slice(&bytes);
@@ -108,13 +116,21 @@ impl Wallet {
 
     pub async fn list_webcash(&self) -> Result<Vec<SecretWebcash>> {
         let rows = self.store.get_unspent()?;
-        Ok(rows.into_iter().map(|(secret, wats)| {
-            SecretWebcash::new(SecureString::new(secret), Amount::from_wats(wats))
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(|(secret, wats)| {
+                SecretWebcash::new(SecureString::new(secret), Amount::from_wats(wats))
+            })
+            .collect())
     }
 
     pub async fn list_public_webcash(&self) -> Result<Vec<PublicWebcash>> {
-        Ok(self.list_webcash().await?.iter().map(|wc| wc.to_public()).collect())
+        Ok(self
+            .list_webcash()
+            .await?
+            .iter()
+            .map(|wc| wc.to_public())
+            .collect())
     }
 
     pub async fn stats(&self) -> Result<WalletStats> {
@@ -131,9 +147,13 @@ impl Wallet {
 
 impl Wallet {
     pub async fn store_directly(&self, webcash: SecretWebcash) -> Result<()> {
-        let secret_str = webcash.secret.as_str().map_err(|_| Error::wallet("Invalid secret encoding"))?;
+        let secret_str = webcash
+            .secret
+            .as_str()
+            .map_err(|_| Error::wallet("Invalid secret encoding"))?;
         let secret_hash = crate::crypto::sha256(secret_str.as_bytes());
-        self.store.insert_output(&secret_hash, secret_str, webcash.amount.wats)?;
+        self.store
+            .insert_output(&secret_hash, secret_str, webcash.amount.wats)?;
         log::debug!("Webcash stored directly: {}", webcash.amount);
         Ok(())
     }
@@ -142,12 +162,17 @@ impl Wallet {
         self.insert_with_validation(webcash, false).await
     }
 
-    pub async fn insert_with_validation(&self, webcash: SecretWebcash, validate_with_server: bool) -> Result<()> {
+    pub async fn insert_with_validation(
+        &self,
+        webcash: SecretWebcash,
+        validate_with_server: bool,
+    ) -> Result<()> {
         log::debug!("Starting webcash insertion with ownership transfer");
 
         let hd_wallet = self.hd_wallet()?;
         let depth = self.read_chain_depth("RECEIVE")?;
-        let new_secret_hex = hd_wallet.derive_secret(crate::hd::ChainCode::Receive, depth)
+        let new_secret_hex = hd_wallet
+            .derive_secret(crate::hd::ChainCode::Receive, depth)
             .map_err(|e| Error::crypto(format!("Failed to generate new secret: {}", e)))?;
         let new_webcash = SecretWebcash::new(SecureString::new(new_secret_hex), webcash.amount);
 
@@ -164,20 +189,34 @@ impl Wallet {
         match self.server_replace(&replace_request).await {
             Ok(resp) if resp.status == "success" => {
                 log::info!("Server replacement successful — ownership transferred");
-                let new_secret_str = new_webcash.secret.as_str()
+                let new_secret_str = new_webcash
+                    .secret
+                    .as_str()
                     .map_err(|_| Error::wallet("Invalid new secret encoding"))?;
                 let new_secret_hash = crate::crypto::sha256(new_secret_str.as_bytes());
-                self.store.insert_output(&new_secret_hash, new_secret_str, new_webcash.amount.wats)?;
+                self.store.insert_output(
+                    &new_secret_hash,
+                    new_secret_str,
+                    new_webcash.amount.wats,
+                )?;
                 self.store.set_depth("RECEIVE", depth + 1)?;
                 log::info!("Inserted webcash at RECEIVE/{}", depth);
                 Ok(())
             }
-            Err(Error::Server { ref message }) if message.contains("can only be replaced by itself") => {
-                log::info!("Same-lineage secret webcash detected, storing directly without replace");
+            Err(Error::Server { ref message })
+                if message.contains("can only be replaced by itself") =>
+            {
+                log::info!(
+                    "Same-lineage secret webcash detected, storing directly without replace"
+                );
                 let public_webcash = webcash.to_public();
-                let health_response = self.server_health_check(std::slice::from_ref(&public_webcash)).await?;
+                let health_response = self
+                    .server_health_check(std::slice::from_ref(&public_webcash))
+                    .await?;
                 if health_response.status != "success" {
-                    return Err(Error::server("Health check failed for same-lineage fallback"));
+                    return Err(Error::server(
+                        "Health check failed for same-lineage fallback",
+                    ));
                 }
                 if let Some(hr) = health_response.results.get(&public_webcash.to_string()) {
                     if hr.spent == Some(true) {
@@ -193,15 +232,25 @@ impl Wallet {
 
     async fn validate_input_webcash(&self, webcash: &SecretWebcash) -> Result<()> {
         let public_webcash = webcash.to_public();
-        let health = self.server_health_check(std::slice::from_ref(&public_webcash)).await?;
-        if health.status != "success" { return Err(Error::server("Server validation failed")); }
+        let health = self
+            .server_health_check(std::slice::from_ref(&public_webcash))
+            .await?;
+        if health.status != "success" {
+            return Err(Error::server("Server validation failed"));
+        }
         if let Some(result) = health.results.get(&public_webcash.to_string()) {
-            if let Some(true) = result.spent { return Err(Error::wallet("Input webcash has been spent")); }
+            if let Some(true) = result.spent {
+                return Err(Error::wallet("Input webcash has been spent"));
+            }
             if let Some(ref server_amount) = result.amount {
-                let expected = Amount::from_str(server_amount)
-                    .map_err(|_| Error::wallet(format!("Invalid amount from server: {}", server_amount)))?;
+                let expected = Amount::from_str(server_amount).map_err(|_| {
+                    Error::wallet(format!("Invalid amount from server: {}", server_amount))
+                })?;
                 if webcash.amount != expected {
-                    return Err(Error::wallet(format!("Amount mismatch: provided {}, server says {}", webcash.amount, expected)));
+                    return Err(Error::wallet(format!(
+                        "Amount mismatch: provided {}, server says {}",
+                        webcash.amount, expected
+                    )));
                 }
             }
         } else {
@@ -219,7 +268,9 @@ impl Wallet {
 
         let hd_wallet = self.hd_wallet()?;
         let inputs = self.select_inputs(amount).await?;
-        if inputs.is_empty() { return Err(Error::wallet("Insufficient funds")); }
+        if inputs.is_empty() {
+            return Err(Error::wallet("Insufficient funds"));
+        }
 
         let input_total: Amount = inputs.iter().fold(Amount::ZERO, |acc, wc| acc + wc.amount);
         let change_amount = input_total - amount;
@@ -227,18 +278,22 @@ impl Wallet {
         let pay_depth = self.read_chain_depth("PAY")?;
         let change_depth = self.read_chain_depth("CHANGE")?;
 
-        let pay_secret = hd_wallet.derive_secret(crate::hd::ChainCode::Pay, pay_depth)
+        let pay_secret = hd_wallet
+            .derive_secret(crate::hd::ChainCode::Pay, pay_depth)
             .map_err(|e| Error::crypto(format!("Failed to generate payment secret: {}", e)))?;
         let payment_webcash = SecretWebcash::new(SecureString::new(pay_secret), amount);
         let mut new_webcashes = vec![payment_webcash.to_string()];
 
         let change_webcash = if change_amount > Amount::ZERO {
-            let change_secret = hd_wallet.derive_secret(crate::hd::ChainCode::Change, change_depth)
+            let change_secret = hd_wallet
+                .derive_secret(crate::hd::ChainCode::Change, change_depth)
                 .map_err(|e| Error::crypto(format!("Failed to generate change secret: {}", e)))?;
             let cw = SecretWebcash::new(SecureString::new(change_secret), change_amount);
             new_webcashes.push(cw.to_string());
             Some(cw)
-        } else { None };
+        } else {
+            None
+        };
 
         let replace_request = ReplaceRequest {
             webcashes: inputs.iter().map(|wc| wc.to_string()).collect(),
@@ -254,7 +309,7 @@ impl Wallet {
 
         // Atomic: mark inputs spent + store change + update depths
         let change_data = change_webcash.as_ref().map(|cw| {
-            let s = cw.secret.as_str().unwrap_or("".into());
+            let s = cw.secret.as_str().unwrap_or("");
             let h = crate::crypto::sha256(s.as_bytes());
             (h, s.to_string(), cw.amount.wats)
         });
@@ -276,7 +331,10 @@ impl Wallet {
             Ok(())
         })?;
 
-        Ok(format!("Payment completed! Send this webcash to recipient: {}", payment_webcash))
+        Ok(format!(
+            "Payment completed! Send this webcash to recipient: {}",
+            payment_webcash
+        ))
     }
 
     async fn select_inputs(&self, amount: Amount) -> Result<Vec<SecretWebcash>> {
@@ -287,9 +345,13 @@ impl Wallet {
             let wc_amount = Amount::from_wats(wats);
             selected.push(SecretWebcash::new(SecureString::new(secret_str), wc_amount));
             total += wc_amount;
-            if total >= amount { break; }
+            if total >= amount {
+                break;
+            }
         }
-        if total < amount { return Err(Error::wallet("Insufficient funds")); }
+        if total < amount {
+            return Err(Error::wallet("Insufficient funds"));
+        }
         Ok(selected)
     }
 
@@ -303,10 +365,15 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn update_unspent_amount(&self, secret_webcash: &SecretWebcash, correct_amount: Amount) -> Result<()> {
+    pub async fn update_unspent_amount(
+        &self,
+        secret_webcash: &SecretWebcash,
+        correct_amount: Amount,
+    ) -> Result<()> {
         let secret_str = secret_webcash.secret.as_str().unwrap_or("");
         let secret_hash = crate::crypto::sha256(secret_str.as_bytes());
-        self.store.update_output_amount(&secret_hash, correct_amount.wats)?;
+        self.store
+            .update_output_amount(&secret_hash, correct_amount.wats)?;
         Ok(())
     }
 }
@@ -317,7 +384,11 @@ impl Wallet {
     pub async fn check(&self) -> Result<CheckResult> {
         let public_webcash_list = self.list_public_webcash().await?;
         if public_webcash_list.is_empty() {
-            return Ok(CheckResult { valid_count: 0, spent_count: 0, unknown_count: 0 });
+            return Ok(CheckResult {
+                valid_count: 0,
+                spent_count: 0,
+                unknown_count: 0,
+            });
         }
 
         let health_response = self.server_health_check(&public_webcash_list).await?;
@@ -329,10 +400,17 @@ impl Wallet {
         let mut valid_count = 0;
         let mut spent_count = 0;
         for health_result in health_response.results.values() {
-            if let Some(true) = health_result.spent { spent_count += 1; }
-            else { valid_count += 1; }
+            if let Some(true) = health_result.spent {
+                spent_count += 1;
+            } else {
+                valid_count += 1;
+            }
         }
-        Ok(CheckResult { valid_count, spent_count, unknown_count: 0 })
+        Ok(CheckResult {
+            valid_count,
+            spent_count,
+            unknown_count: 0,
+        })
     }
 }
 
@@ -343,18 +421,30 @@ impl Wallet {
         log::info!("Starting output consolidation");
 
         let all_webcash = self.list_webcash().await?;
-        if all_webcash.len() <= 1 { return Ok("No consolidation needed".to_string()); }
+        if all_webcash.len() <= 1 {
+            return Ok("No consolidation needed".to_string());
+        }
 
-        let webcash_to_merge = if all_webcash.len() > max_outputs { &all_webcash[..max_outputs] } else { &all_webcash };
-        if webcash_to_merge.len() <= 1 { return Ok("Insufficient outputs to merge".to_string()); }
+        let webcash_to_merge = if all_webcash.len() > max_outputs {
+            &all_webcash[..max_outputs]
+        } else {
+            &all_webcash
+        };
+        if webcash_to_merge.len() <= 1 {
+            return Ok("Insufficient outputs to merge".to_string());
+        }
 
-        let total_amount: Amount = webcash_to_merge.iter().fold(Amount::ZERO, |acc, wc| acc + wc.amount);
+        let total_amount: Amount = webcash_to_merge
+            .iter()
+            .fold(Amount::ZERO, |acc, wc| acc + wc.amount);
 
         let hd_wallet = self.hd_wallet()?;
         let change_depth = self.read_chain_depth("CHANGE")?;
-        let change_secret_hex = hd_wallet.derive_secret(crate::hd::ChainCode::Change, change_depth)
+        let change_secret_hex = hd_wallet
+            .derive_secret(crate::hd::ChainCode::Change, change_depth)
             .map_err(|e| Error::crypto(format!("Failed to generate change secret: {}", e)))?;
-        let consolidated_webcash = SecretWebcash::new(SecureString::new(change_secret_hex), total_amount);
+        let consolidated_webcash =
+            SecretWebcash::new(SecureString::new(change_secret_hex), total_amount);
 
         let replace_request = ReplaceRequest {
             webcashes: webcash_to_merge.iter().map(|wc| wc.to_string()).collect(),
@@ -364,9 +454,15 @@ impl Wallet {
 
         let response = self.server_replace(&replace_request).await?;
 
-        if response.status != "success" { return Err(Error::server("Consolidation transaction failed")); }
+        if response.status != "success" {
+            return Err(Error::server("Consolidation transaction failed"));
+        }
 
-        let cs = consolidated_webcash.secret.as_str().map_err(|_| Error::wallet("Invalid consolidated secret"))?.to_string();
+        let cs = consolidated_webcash
+            .secret
+            .as_str()
+            .map_err(|_| Error::wallet("Invalid consolidated secret"))?
+            .to_string();
         let ch = crate::crypto::sha256(cs.as_bytes());
         let cons_wats = consolidated_webcash.amount.wats;
         let merge_count = webcash_to_merge.len();
@@ -383,7 +479,10 @@ impl Wallet {
             Ok(())
         })?;
 
-        Ok(format!("Consolidation completed: {} outputs merged, total {} preserved", merge_count, total_amount))
+        Ok(format!(
+            "Consolidation completed: {} outputs merged, total {} preserved",
+            merge_count, total_amount
+        ))
     }
 }
 
@@ -400,7 +499,11 @@ impl Wallet {
         }
     }
 
-    pub async fn recover(&self, master_secret_hex: &str, gap_limit: usize) -> Result<RecoveryResult> {
+    pub async fn recover(
+        &self,
+        master_secret_hex: &str,
+        gap_limit: usize,
+    ) -> Result<RecoveryResult> {
         use crate::hd::ChainCode;
 
         log::info!("Starting wallet recovery with gap_limit={}", gap_limit);
@@ -447,7 +550,8 @@ impl Wallet {
 
                 for offset in 0..gap_limit {
                     let depth = current_depth + offset as u64;
-                    let derived_secret_hex = hd_wallet.derive_secret(*chain_code, depth)
+                    let derived_secret_hex = hd_wallet
+                        .derive_secret(*chain_code, depth)
                         .map_err(|e| Error::crypto(format!("HD derivation failed: {}", e)))?;
                     let test_webcash = SecretWebcash::new(
                         SecureString::new(derived_secret_hex.clone()),
@@ -464,30 +568,48 @@ impl Wallet {
                 match health_result {
                     Ok(response) => {
                         for (public_webcash_str, health_result) in &response.results {
-                            let hash_hex = if let Some(hash_part) = public_webcash_str.split(':').nth(2) {
-                                hash_part.to_string()
-                            } else { continue; };
+                            let hash_hex =
+                                if let Some(hash_part) = public_webcash_str.split(':').nth(2) {
+                                    hash_part.to_string()
+                                } else {
+                                    continue;
+                                };
 
                             if let Some((secret_hex, depth)) = check_webcashes.get(&hash_hex) {
                                 let depth = *depth;
                                 if health_result.spent.is_some() {
                                     has_had_webcash = true;
                                     consecutive_empty = 0;
-                                    if depth > last_used_walletdepth { last_used_walletdepth = depth; }
+                                    if depth > last_used_walletdepth {
+                                        last_used_walletdepth = depth;
+                                    }
                                 }
                                 if health_result.spent == Some(false) {
                                     if let Some(actual_amount_str) = &health_result.amount {
-                                        let amount = Amount::from_str(actual_amount_str)
-                                            .map_err(|_| Error::wallet("Invalid amount from server"))?;
-                                        let actual_webcash = SecretWebcash::new(SecureString::new(secret_hex.clone()), amount);
+                                        let amount =
+                                            Amount::from_str(actual_amount_str).map_err(|_| {
+                                                Error::wallet("Invalid amount from server")
+                                            })?;
+                                        let actual_webcash = SecretWebcash::new(
+                                            SecureString::new(secret_hex.clone()),
+                                            amount,
+                                        );
                                         match self.store_directly(actual_webcash).await {
                                             Ok(()) => {
                                                 recovered_count += 1;
                                                 total_recovered_amount += amount;
                                                 has_had_webcash = true;
-                                                log::info!("Recovered: {} at {}/{}", amount, chain_name, depth);
+                                                log::info!(
+                                                    "Recovered: {} at {}/{}",
+                                                    amount,
+                                                    chain_name,
+                                                    depth
+                                                );
                                             }
-                                            Err(e) if e.to_string().contains("UNIQUE constraint") || e.to_string().contains("already exists") => {
+                                            Err(e)
+                                                if e.to_string().contains("UNIQUE constraint")
+                                                    || e.to_string().contains("already exists") =>
+                                            {
                                                 has_had_webcash = true;
                                             }
                                             Err(e) => return Err(e),
@@ -503,17 +625,27 @@ impl Wallet {
                     }
                 }
 
-                if current_depth < reported_walletdepth { has_had_webcash = true; }
-                if has_had_webcash { current_depth += gap_limit as u64; }
-                if !has_had_webcash && consecutive_empty >= gap_limit as u64 { break; }
+                if current_depth < reported_walletdepth {
+                    has_had_webcash = true;
+                }
+                if has_had_webcash {
+                    current_depth += gap_limit as u64;
+                }
+                if !has_had_webcash && consecutive_empty >= gap_limit as u64 {
+                    break;
+                }
             }
 
             if last_used_walletdepth > 0 && reported_walletdepth < last_used_walletdepth {
-                self.store.set_depth(chain_name, last_used_walletdepth + 1)?;
+                self.store
+                    .set_depth(chain_name, last_used_walletdepth + 1)?;
             }
         }
 
-        Ok(RecoveryResult { recovered_count, total_amount: total_recovered_amount })
+        Ok(RecoveryResult {
+            recovered_count,
+            total_amount: total_recovered_amount,
+        })
     }
 }
 
@@ -533,7 +665,8 @@ impl Wallet {
         };
 
         let depth = self.store.get_depth(chain_name)?;
-        let secret_hex = hd_wallet.derive_secret(chain_code, depth)
+        let secret_hex = hd_wallet
+            .derive_secret(chain_code, depth)
             .map_err(|e| Error::crypto(format!("HD derivation failed: {}", e)))?;
         self.store.set_depth(chain_name, depth + 1)?;
 
@@ -564,26 +697,47 @@ impl Wallet {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) async fn server_health_check(&self, webcash: &[PublicWebcash]) -> Result<HealthResponse> {
+    pub(crate) async fn server_health_check(
+        &self,
+        webcash: &[PublicWebcash],
+    ) -> Result<HealthResponse> {
         self.server_client.lock().await.health_check(webcash).await
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub(crate) async fn server_health_check(&self, webcash: &[PublicWebcash]) -> Result<HealthResponse> {
+    pub(crate) async fn server_health_check(
+        &self,
+        webcash: &[PublicWebcash],
+    ) -> Result<HealthResponse> {
         self.server_client.health_check(webcash).await
     }
 
     pub async fn server_get_target(&self) -> Result<crate::server::TargetResponse> {
         #[cfg(not(target_arch = "wasm32"))]
-        { self.server_client.lock().await.get_target().await }
+        {
+            self.server_client.lock().await.get_target().await
+        }
         #[cfg(target_arch = "wasm32")]
-        { self.server_client.get_target().await }
+        {
+            self.server_client.get_target().await
+        }
     }
 
-    pub async fn server_submit_mining_report(&self, report: &crate::server::MiningReportRequest) -> Result<crate::server::MiningReportResponse> {
+    pub async fn server_submit_mining_report(
+        &self,
+        report: &crate::server::MiningReportRequest,
+    ) -> Result<crate::server::MiningReportResponse> {
         #[cfg(not(target_arch = "wasm32"))]
-        { self.server_client.lock().await.submit_mining_report(report).await }
+        {
+            self.server_client
+                .lock()
+                .await
+                .submit_mining_report(report)
+                .await
+        }
         #[cfg(target_arch = "wasm32")]
-        { self.server_client.submit_mining_report(report).await }
+        {
+            self.server_client.submit_mining_report(report).await
+        }
     }
 }

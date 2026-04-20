@@ -74,7 +74,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - name: Check (library only)
-        run: cargo check --target ${{ matrix.target }} --lib --no-default-features --features bundled-sqlite,ffi
+        run: cargo check --target ${{ matrix.target }} --lib --no-default-features --features bundled-sqlite
 
   # ── FreeBSD ──────────────────────────────────────────────────────
   test-freebsd:

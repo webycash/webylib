@@ -67,7 +67,9 @@ pub(crate) mod sqlite {
     }
 
     impl Store for SqliteStore {
-        fn as_any(&self) -> &dyn std::any::Any { self }
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
 
         fn get_meta(&self, key: &str) -> Result<Option<String>> {
             let conn = self.connection()?;
@@ -122,7 +124,9 @@ pub(crate) mod sqlite {
                 "SELECT secret, amount FROM unspent_outputs WHERE spent = 0 ORDER BY amount DESC",
             )?;
             let rows = stmt
-                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))?
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                })?
                 .collect::<std::result::Result<Vec<_>, _>>()?;
             Ok(rows)
         }
@@ -164,8 +168,7 @@ pub(crate) mod sqlite {
 
         fn count_spent_hashes(&self) -> Result<u64> {
             let conn = self.connection()?;
-            let n: i64 =
-                conn.query_row("SELECT COUNT(*) FROM spent_hashes", [], |r| r.get(0))?;
+            let n: i64 = conn.query_row("SELECT COUNT(*) FROM spent_hashes", [], |r| r.get(0))?;
             Ok(n as u64)
         }
 
@@ -226,18 +229,18 @@ pub(crate) mod sqlite {
 
         fn get_all_meta(&self) -> Result<HashMap<String, String>> {
             let conn = self.connection()?;
-            let mut stmt =
-                conn.prepare("SELECT key, value FROM wallet_metadata ORDER BY key")?;
+            let mut stmt = conn.prepare("SELECT key, value FROM wallet_metadata ORDER BY key")?;
             let map = stmt
-                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?
                 .collect::<std::result::Result<HashMap<_, _>, _>>()?;
             Ok(map)
         }
 
         fn get_spent_hashes_with_time(&self) -> Result<Vec<(Vec<u8>, String)>> {
             let conn = self.connection()?;
-            let mut stmt =
-                conn.prepare("SELECT hash, spent_at FROM spent_hashes ORDER BY id")?;
+            let mut stmt = conn.prepare("SELECT hash, spent_at FROM spent_hashes ORDER BY id")?;
             let rows = stmt
                 .query_map([], |row| {
                     Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, String>(1)?))
@@ -273,13 +276,15 @@ pub(crate) mod sqlite {
 
         fn atomic(&self, f: &mut dyn FnMut(&dyn Store) -> Result<()>) -> Result<()> {
             let mut conn = self.connection()?;
-            let tx = conn.transaction().map_err(|e| Error::Database(e).with_context("begin transaction"))?;
+            let tx = conn
+                .transaction()
+                .map_err(|e| Error::Database(e).with_context("begin transaction"))?;
             let tx_store = SqliteTxStore(&tx);
             f(&tx_store)?;
-            tx.commit().map_err(|e| Error::Database(e).with_context("commit transaction"))?;
+            tx.commit()
+                .map_err(|e| Error::Database(e).with_context("commit transaction"))?;
             Ok(())
         }
-
     }
 
     // ── Transaction-scoped store ────────────────────────────────
@@ -290,7 +295,9 @@ pub(crate) mod sqlite {
     struct SqliteTxStore<'a>(&'a rusqlite::Transaction<'a>);
 
     impl<'a> Store for SqliteTxStore<'a> {
-        fn as_any(&self) -> &dyn std::any::Any { unimplemented!("TxStore is not downcastable") }
+        fn as_any(&self) -> &dyn std::any::Any {
+            unimplemented!("TxStore is not downcastable")
+        }
 
         fn get_meta(&self, key: &str) -> Result<Option<String>> {
             self.0
@@ -340,7 +347,9 @@ pub(crate) mod sqlite {
                 "SELECT secret, amount FROM unspent_outputs WHERE spent = 0 ORDER BY amount DESC",
             )?;
             let rows = stmt
-                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))?
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                })?
                 .collect::<std::result::Result<Vec<_>, _>>()?;
             Ok(rows)
         }
@@ -363,9 +372,9 @@ pub(crate) mod sqlite {
         }
 
         fn count_outputs(&self) -> Result<u64> {
-            let n: i64 =
-                self.0
-                    .query_row("SELECT COUNT(*) FROM unspent_outputs", [], |r| r.get(0))?;
+            let n: i64 = self
+                .0
+                .query_row("SELECT COUNT(*) FROM unspent_outputs", [], |r| r.get(0))?;
             Ok(n as u64)
         }
 
@@ -379,9 +388,9 @@ pub(crate) mod sqlite {
         }
 
         fn count_spent_hashes(&self) -> Result<u64> {
-            let n: i64 =
-                self.0
-                    .query_row("SELECT COUNT(*) FROM spent_hashes", [], |r| r.get(0))?;
+            let n: i64 = self
+                .0
+                .query_row("SELECT COUNT(*) FROM spent_hashes", [], |r| r.get(0))?;
             Ok(n as u64)
         }
 
@@ -428,7 +437,9 @@ pub(crate) mod sqlite {
         }
 
         fn get_all_depths(&self) -> Result<HashMap<String, u64>> {
-            let mut stmt = self.0.prepare("SELECT chain_code, depth FROM walletdepths")?;
+            let mut stmt = self
+                .0
+                .prepare("SELECT chain_code, depth FROM walletdepths")?;
             let map = stmt
                 .query_map([], |row| {
                     Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as u64))
@@ -438,19 +449,21 @@ pub(crate) mod sqlite {
         }
 
         fn get_all_meta(&self) -> Result<HashMap<String, String>> {
-            let mut stmt =
-                self.0
-                    .prepare("SELECT key, value FROM wallet_metadata ORDER BY key")?;
+            let mut stmt = self
+                .0
+                .prepare("SELECT key, value FROM wallet_metadata ORDER BY key")?;
             let map = stmt
-                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?
                 .collect::<std::result::Result<HashMap<_, _>, _>>()?;
             Ok(map)
         }
 
         fn get_spent_hashes_with_time(&self) -> Result<Vec<(Vec<u8>, String)>> {
-            let mut stmt =
-                self.0
-                    .prepare("SELECT hash, spent_at FROM spent_hashes ORDER BY id")?;
+            let mut stmt = self
+                .0
+                .prepare("SELECT hash, spent_at FROM spent_hashes ORDER BY id")?;
             let rows = stmt
                 .query_map([], |row| {
                     Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, String>(1)?))
@@ -487,7 +500,6 @@ pub(crate) mod sqlite {
             f(self)
         }
     }
-
 }
 
 // ── Shared JSON-serializable state ──────────────────────────────
@@ -555,7 +567,9 @@ pub(crate) mod mem {
     }
 
     impl Store for MemStore {
-        fn as_any(&self) -> &dyn std::any::Any { self }
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
 
         fn get_meta(&self, key: &str) -> Result<Option<String>> {
             Ok(self.0.borrow().meta.get(key).cloned())
@@ -599,9 +613,7 @@ pub(crate) mod mem {
         fn insert_spent_hash(&self, hash: &[u8]) -> Result<()> {
             let mut state = self.0.borrow_mut();
             if !state.spent_hashes.iter().any(|(h, _)| h == hash) {
-                state
-                    .spent_hashes
-                    .push((hash.to_vec(), String::new()));
+                state.spent_hashes.push((hash.to_vec(), String::new()));
             }
             Ok(())
         }
@@ -674,10 +686,7 @@ pub(crate) mod mem {
         }
 
         fn set_depth(&self, chain: &str, depth: u64) -> Result<()> {
-            self.0
-                .borrow_mut()
-                .depths
-                .insert(chain.to_string(), depth);
+            self.0.borrow_mut().depths.insert(chain.to_string(), depth);
             Ok(())
         }
 
@@ -740,14 +749,20 @@ pub mod json {
     impl JsonStore {
         /// Create an empty store. If `path` is `Some`, state is persisted to that file.
         pub fn new(path: Option<PathBuf>) -> Self {
-            Self { state: Mutex::new(new_mem_state()), path }
+            Self {
+                state: Mutex::new(new_mem_state()),
+                path,
+            }
         }
 
         /// Create from an existing JSON string.
         pub fn from_json(json: &str, path: Option<PathBuf>) -> Result<Self> {
             let state: MemState =
                 serde_json::from_str(json).map_err(|e| Error::wallet(e.to_string()))?;
-            Ok(Self { state: Mutex::new(state), path })
+            Ok(Self {
+                state: Mutex::new(state),
+                path,
+            })
         }
 
         /// Open from a JSON file on disk. Creates with defaults if the file doesn't exist.
@@ -769,7 +784,9 @@ pub mod json {
 
         /// Serialize state to JSON.
         pub fn to_json(&self) -> Result<String> {
-            let state = self.state.lock()
+            let state = self
+                .state
+                .lock()
                 .map_err(|_| Error::wallet("lock poisoned"))?;
             serde_json::to_string_pretty(&*state).map_err(|e| Error::wallet(e.to_string()))
         }
@@ -785,13 +802,17 @@ pub mod json {
         }
 
         fn with_state<R>(&self, f: impl FnOnce(&MemState) -> R) -> Result<R> {
-            let state = self.state.lock()
+            let state = self
+                .state
+                .lock()
                 .map_err(|_| Error::wallet("lock poisoned"))?;
             Ok(f(&state))
         }
 
         fn mutate<R>(&self, f: impl FnOnce(&mut MemState) -> R) -> Result<R> {
-            let mut state = self.state.lock()
+            let mut state = self
+                .state
+                .lock()
                 .map_err(|_| Error::wallet("lock poisoned"))?;
             let result = f(&mut state);
             drop(state);
@@ -801,14 +822,18 @@ pub mod json {
     }
 
     impl Store for JsonStore {
-        fn as_any(&self) -> &dyn std::any::Any { self }
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
 
         fn get_meta(&self, key: &str) -> Result<Option<String>> {
             self.with_state(|s| s.meta.get(key).cloned())
         }
 
         fn set_meta(&self, key: &str, value: &str) -> Result<()> {
-            self.mutate(|s| { s.meta.insert(key.to_string(), value.to_string()); })
+            self.mutate(|s| {
+                s.meta.insert(key.to_string(), value.to_string());
+            })
         }
 
         fn insert_output(&self, secret_hash: &[u8], secret: &str, amount: i64) -> Result<()> {
@@ -841,7 +866,9 @@ pub mod json {
 
         fn get_unspent(&self) -> Result<Vec<(String, i64)>> {
             self.with_state(|s| {
-                let mut v: Vec<_> = s.outputs.iter()
+                let mut v: Vec<_> = s
+                    .outputs
+                    .iter()
                     .filter(|o| !o.spent)
                     .map(|o| (o.secret.clone(), o.amount))
                     .collect();
@@ -852,8 +879,16 @@ pub mod json {
 
         fn get_all_outputs(&self) -> Result<Vec<(String, i64, String, i32)>> {
             self.with_state(|s| {
-                s.outputs.iter()
-                    .map(|o| (o.secret.clone(), o.amount, o.created_at.clone(), if o.spent { 1 } else { 0 }))
+                s.outputs
+                    .iter()
+                    .map(|o| {
+                        (
+                            o.secret.clone(),
+                            o.amount,
+                            o.created_at.clone(),
+                            if o.spent { 1 } else { 0 },
+                        )
+                    })
                     .collect()
             })
         }
@@ -871,12 +906,22 @@ pub mod json {
         }
 
         fn sum_unspent(&self) -> Result<i64> {
-            self.with_state(|s| s.outputs.iter().filter(|o| !o.spent).map(|o| o.amount).sum())
+            self.with_state(|s| {
+                s.outputs
+                    .iter()
+                    .filter(|o| !o.spent)
+                    .map(|o| o.amount)
+                    .sum()
+            })
         }
 
         fn update_output_amount(&self, secret_hash: &[u8], new_amount: i64) -> Result<()> {
             self.mutate(|s| {
-                if let Some(o) = s.outputs.iter_mut().find(|o| o.secret_hash == secret_hash && !o.spent) {
+                if let Some(o) = s
+                    .outputs
+                    .iter_mut()
+                    .find(|o| o.secret_hash == secret_hash && !o.spent)
+                {
                     o.amount = new_amount;
                 }
             })
@@ -887,7 +932,9 @@ pub mod json {
         }
 
         fn set_depth(&self, chain: &str, depth: u64) -> Result<()> {
-            self.mutate(|s| { s.depths.insert(chain.to_string(), depth); })
+            self.mutate(|s| {
+                s.depths.insert(chain.to_string(), depth);
+            })
         }
 
         fn get_all_depths(&self) -> Result<HashMap<String, u64>> {
@@ -904,7 +951,8 @@ pub mod json {
 
         fn get_unspent_full(&self) -> Result<Vec<(String, i64, String)>> {
             self.with_state(|s| {
-                s.outputs.iter()
+                s.outputs
+                    .iter()
                     .filter(|o| !o.spent)
                     .map(|o| (o.secret.clone(), o.amount, o.created_at.clone()))
                     .collect()
@@ -921,7 +969,9 @@ pub mod json {
 
         fn atomic(&self, f: &mut dyn FnMut(&dyn Store) -> Result<()>) -> Result<()> {
             // Hold the lock for the entire batch, flush once at the end.
-            let mut state = self.state.lock()
+            let mut state = self
+                .state
+                .lock()
                 .map_err(|_| Error::wallet("lock poisoned"))?;
             // Create a temporary in-memory store from current state for the batch
             let batch_state = std::cell::RefCell::new(state.clone());
@@ -929,49 +979,147 @@ pub mod json {
 
             // Run on a snapshot — if f fails, original state is untouched
             impl<'a> Store for BatchStore<'a> {
-                fn as_any(&self) -> &dyn std::any::Any { unimplemented!() }
+                fn as_any(&self) -> &dyn std::any::Any {
+                    unimplemented!()
+                }
                 fn get_meta(&self, key: &str) -> Result<Option<String>> {
                     Ok(self.0.borrow().meta.get(key).cloned())
                 }
                 fn set_meta(&self, key: &str, value: &str) -> Result<()> {
-                    self.0.borrow_mut().meta.insert(key.to_string(), value.to_string()); Ok(())
+                    self.0
+                        .borrow_mut()
+                        .meta
+                        .insert(key.to_string(), value.to_string());
+                    Ok(())
                 }
-                fn insert_output(&self, secret_hash: &[u8], secret: &str, amount: i64) -> Result<()> {
+                fn insert_output(
+                    &self,
+                    secret_hash: &[u8],
+                    secret: &str,
+                    amount: i64,
+                ) -> Result<()> {
                     self.0.borrow_mut().outputs.push(MemOutput {
-                        secret_hash: secret_hash.to_vec(), secret: secret.to_string(),
-                        amount, created_at: String::new(), spent: false,
-                    }); Ok(())
+                        secret_hash: secret_hash.to_vec(),
+                        secret: secret.to_string(),
+                        amount,
+                        created_at: String::new(),
+                        spent: false,
+                    });
+                    Ok(())
                 }
                 fn mark_spent(&self, secret_hash: &[u8]) -> Result<()> {
-                    if let Some(o) = self.0.borrow_mut().outputs.iter_mut().find(|o| o.secret_hash == secret_hash) { o.spent = true; } Ok(())
+                    if let Some(o) = self
+                        .0
+                        .borrow_mut()
+                        .outputs
+                        .iter_mut()
+                        .find(|o| o.secret_hash == secret_hash)
+                    {
+                        o.spent = true;
+                    }
+                    Ok(())
                 }
                 fn insert_spent_hash(&self, hash: &[u8]) -> Result<()> {
                     let mut s = self.0.borrow_mut();
-                    if !s.spent_hashes.iter().any(|(h,_)| h == hash) { s.spent_hashes.push((hash.to_vec(), String::new())); } Ok(())
+                    if !s.spent_hashes.iter().any(|(h, _)| h == hash) {
+                        s.spent_hashes.push((hash.to_vec(), String::new()));
+                    }
+                    Ok(())
                 }
                 fn get_unspent(&self) -> Result<Vec<(String, i64)>> {
-                    let s = self.0.borrow(); let mut v: Vec<_> = s.outputs.iter().filter(|o| !o.spent).map(|o| (o.secret.clone(), o.amount)).collect(); v.sort_by(|a,b| b.1.cmp(&a.1)); Ok(v)
+                    let s = self.0.borrow();
+                    let mut v: Vec<_> = s
+                        .outputs
+                        .iter()
+                        .filter(|o| !o.spent)
+                        .map(|o| (o.secret.clone(), o.amount))
+                        .collect();
+                    v.sort_by(|a, b| b.1.cmp(&a.1));
+                    Ok(v)
                 }
                 fn get_all_outputs(&self) -> Result<Vec<(String, i64, String, i32)>> {
-                    Ok(self.0.borrow().outputs.iter().map(|o| (o.secret.clone(), o.amount, o.created_at.clone(), if o.spent {1} else {0})).collect())
+                    Ok(self
+                        .0
+                        .borrow()
+                        .outputs
+                        .iter()
+                        .map(|o| {
+                            (
+                                o.secret.clone(),
+                                o.amount,
+                                o.created_at.clone(),
+                                if o.spent { 1 } else { 0 },
+                            )
+                        })
+                        .collect())
                 }
-                fn count_outputs(&self) -> Result<u64> { Ok(self.0.borrow().outputs.len() as u64) }
-                fn count_unspent(&self) -> Result<u64> { Ok(self.0.borrow().outputs.iter().filter(|o| !o.spent).count() as u64) }
-                fn count_spent_hashes(&self) -> Result<u64> { Ok(self.0.borrow().spent_hashes.len() as u64) }
-                fn sum_unspent(&self) -> Result<i64> { Ok(self.0.borrow().outputs.iter().filter(|o| !o.spent).map(|o| o.amount).sum()) }
+                fn count_outputs(&self) -> Result<u64> {
+                    Ok(self.0.borrow().outputs.len() as u64)
+                }
+                fn count_unspent(&self) -> Result<u64> {
+                    Ok(self.0.borrow().outputs.iter().filter(|o| !o.spent).count() as u64)
+                }
+                fn count_spent_hashes(&self) -> Result<u64> {
+                    Ok(self.0.borrow().spent_hashes.len() as u64)
+                }
+                fn sum_unspent(&self) -> Result<i64> {
+                    Ok(self
+                        .0
+                        .borrow()
+                        .outputs
+                        .iter()
+                        .filter(|o| !o.spent)
+                        .map(|o| o.amount)
+                        .sum())
+                }
                 fn update_output_amount(&self, secret_hash: &[u8], new_amount: i64) -> Result<()> {
-                    if let Some(o) = self.0.borrow_mut().outputs.iter_mut().find(|o| o.secret_hash == secret_hash && !o.spent) { o.amount = new_amount; } Ok(())
+                    if let Some(o) = self
+                        .0
+                        .borrow_mut()
+                        .outputs
+                        .iter_mut()
+                        .find(|o| o.secret_hash == secret_hash && !o.spent)
+                    {
+                        o.amount = new_amount;
+                    }
+                    Ok(())
                 }
-                fn get_depth(&self, chain: &str) -> Result<u64> { Ok(self.0.borrow().depths.get(chain).copied().unwrap_or(0)) }
-                fn set_depth(&self, chain: &str, depth: u64) -> Result<()> { self.0.borrow_mut().depths.insert(chain.to_string(), depth); Ok(()) }
-                fn get_all_depths(&self) -> Result<HashMap<String, u64>> { Ok(self.0.borrow().depths.clone()) }
-                fn get_all_meta(&self) -> Result<HashMap<String, String>> { Ok(self.0.borrow().meta.clone()) }
-                fn get_spent_hashes_with_time(&self) -> Result<Vec<(Vec<u8>, String)>> { Ok(self.0.borrow().spent_hashes.clone()) }
+                fn get_depth(&self, chain: &str) -> Result<u64> {
+                    Ok(self.0.borrow().depths.get(chain).copied().unwrap_or(0))
+                }
+                fn set_depth(&self, chain: &str, depth: u64) -> Result<()> {
+                    self.0.borrow_mut().depths.insert(chain.to_string(), depth);
+                    Ok(())
+                }
+                fn get_all_depths(&self) -> Result<HashMap<String, u64>> {
+                    Ok(self.0.borrow().depths.clone())
+                }
+                fn get_all_meta(&self) -> Result<HashMap<String, String>> {
+                    Ok(self.0.borrow().meta.clone())
+                }
+                fn get_spent_hashes_with_time(&self) -> Result<Vec<(Vec<u8>, String)>> {
+                    Ok(self.0.borrow().spent_hashes.clone())
+                }
                 fn get_unspent_full(&self) -> Result<Vec<(String, i64, String)>> {
-                    Ok(self.0.borrow().outputs.iter().filter(|o| !o.spent).map(|o| (o.secret.clone(), o.amount, o.created_at.clone())).collect())
+                    Ok(self
+                        .0
+                        .borrow()
+                        .outputs
+                        .iter()
+                        .filter(|o| !o.spent)
+                        .map(|o| (o.secret.clone(), o.amount, o.created_at.clone()))
+                        .collect())
                 }
-                fn clear_all(&self) -> Result<()> { let mut s = self.0.borrow_mut(); s.meta.clear(); s.outputs.clear(); s.spent_hashes.clear(); Ok(()) }
-                fn atomic(&self, f: &mut dyn FnMut(&dyn Store) -> Result<()>) -> Result<()> { f(self) }
+                fn clear_all(&self) -> Result<()> {
+                    let mut s = self.0.borrow_mut();
+                    s.meta.clear();
+                    s.outputs.clear();
+                    s.spent_hashes.clear();
+                    Ok(())
+                }
+                fn atomic(&self, f: &mut dyn FnMut(&dyn Store) -> Result<()>) -> Result<()> {
+                    f(self)
+                }
             }
 
             let batch = BatchStore(&batch_state);

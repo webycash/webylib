@@ -83,7 +83,11 @@ fn now_iso() -> String {
 
 impl WalletState {
     fn balance(&self) -> i64 {
-        self.outputs.iter().filter(|o| !o.spent).map(|o| o.amount).sum()
+        self.outputs
+            .iter()
+            .filter(|o| !o.spent)
+            .map(|o| o.amount)
+            .sum()
     }
 
     fn unspent(&self) -> Vec<&Output> {
@@ -95,8 +99,7 @@ impl WalletState {
     }
 
     fn derive(&self, chain_code: u32, depth: u64) -> Result<String, String> {
-        derive_secret(&self.master_secret, chain_code, depth)
-            .map_err(|e| format!("{:?}", e))
+        derive_secret(&self.master_secret, chain_code, depth).map_err(|e| format!("{:?}", e))
     }
 }
 
@@ -123,7 +126,8 @@ pub fn wallet_create(master_secret_hex: Option<String>) -> Result<String, JsErro
             ("PAY".into(), 0),
             ("CHANGE".into(), 0),
             ("MINING".into(), 0),
-        ].into(),
+        ]
+        .into(),
     };
 
     let result = WalletResult {
@@ -138,15 +142,15 @@ pub fn wallet_create(master_secret_hex: Option<String>) -> Result<String, JsErro
 
 #[wasm_bindgen]
 pub fn wallet_balance(state_json: &str) -> Result<i64, JsError> {
-    let state: WalletState = serde_json::from_str(state_json)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let state: WalletState =
+        serde_json::from_str(state_json).map_err(|e| JsError::new(&e.to_string()))?;
     Ok(state.balance())
 }
 
 #[wasm_bindgen]
 pub fn wallet_info(state_json: &str) -> Result<String, JsError> {
-    let state: WalletState = serde_json::from_str(state_json)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let state: WalletState =
+        serde_json::from_str(state_json).map_err(|e| JsError::new(&e.to_string()))?;
 
     let unspent: Vec<_> = state.outputs.iter().filter(|o| !o.spent).collect();
     let spent_count = state.spent_hashes.len();
@@ -176,16 +180,19 @@ pub fn wallet_info(state_json: &str) -> Result<String, JsError> {
 
 /// Prepare an insert (receive) — returns effect for JS to POST /replace
 #[wasm_bindgen]
-pub fn wallet_prepare_insert(state_json: &str, webcash_str: &str, timestamp: &str) -> Result<String, JsError> {
-    let state: WalletState = serde_json::from_str(state_json)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+pub fn wallet_prepare_insert(
+    state_json: &str,
+    webcash_str: &str,
+    timestamp: &str,
+) -> Result<String, JsError> {
+    let state: WalletState =
+        serde_json::from_str(state_json).map_err(|e| JsError::new(&e.to_string()))?;
 
-    let (input_secret, amount_wats) = crate::parse_webcash_internal(webcash_str)
-        .map_err(|e| JsError::new(&e))?;
+    let (input_secret, amount_wats) =
+        crate::parse_webcash_internal(webcash_str).map_err(|e| JsError::new(&e))?;
 
     let depth = state.get_depth("RECEIVE");
-    let new_secret = state.derive(0, depth)
-        .map_err(|e| JsError::new(&e))?;
+    let new_secret = state.derive(0, depth).map_err(|e| JsError::new(&e))?;
     let new_hash = secret_hash(&new_secret);
 
     let input_str = crate::format_webcash(&input_secret, amount_wats);
@@ -215,9 +222,13 @@ pub fn wallet_prepare_insert(state_json: &str, webcash_str: &str, timestamp: &st
 
 /// After server confirms replace, apply the state change
 #[wasm_bindgen]
-pub fn wallet_apply_replace(state_json: &str, effect_json: &str, success: bool) -> Result<String, JsError> {
-    let mut state: WalletState = serde_json::from_str(state_json)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+pub fn wallet_apply_replace(
+    state_json: &str,
+    effect_json: &str,
+    success: bool,
+) -> Result<String, JsError> {
+    let mut state: WalletState =
+        serde_json::from_str(state_json).map_err(|e| JsError::new(&e.to_string()))?;
 
     if !success {
         return Ok(serde_json::to_string(&WalletResult {
@@ -225,13 +236,20 @@ pub fn wallet_apply_replace(state_json: &str, effect_json: &str, success: bool) 
             effect: None,
             message: None,
             error: Some("Server rejected the replace".into()),
-        }).unwrap());
+        })
+        .unwrap());
     }
 
-    let effect: Effect = serde_json::from_str(effect_json)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let effect: Effect =
+        serde_json::from_str(effect_json).map_err(|e| JsError::new(&e.to_string()))?;
 
-    if let Effect::Replace { pending_output, depth_updates, mark_spent, .. } = effect {
+    if let Effect::Replace {
+        pending_output,
+        depth_updates,
+        mark_spent,
+        ..
+    } = effect
+    {
         // Mark spent
         for secret in &mark_spent {
             if let Some(out) = state.outputs.iter_mut().find(|o| o.secret == *secret) {
@@ -257,14 +275,19 @@ pub fn wallet_apply_replace(state_json: &str, effect_json: &str, success: bool) 
         effect: None,
         message: Some("Success".into()),
         error: None,
-    }).unwrap())
+    })
+    .unwrap())
 }
 
 /// Prepare a payment — returns effect for JS to POST /replace
 #[wasm_bindgen]
-pub fn wallet_prepare_pay(state_json: &str, amount_wats: i64, timestamp: &str) -> Result<String, JsError> {
-    let state: WalletState = serde_json::from_str(state_json)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+pub fn wallet_prepare_pay(
+    state_json: &str,
+    amount_wats: i64,
+    timestamp: &str,
+) -> Result<String, JsError> {
+    let state: WalletState =
+        serde_json::from_str(state_json).map_err(|e| JsError::new(&e.to_string()))?;
 
     // Select inputs (largest first)
     let mut unspent: Vec<_> = state.outputs.iter().filter(|o| !o.spent).collect();
@@ -295,7 +318,9 @@ pub fn wallet_prepare_pay(state_json: &str, amount_wats: i64, timestamp: &str) -
 
     let mut pending_change: Option<Output> = None;
     if change > 0 {
-        let change_secret = state.derive(2, change_depth).map_err(|e| JsError::new(&e))?;
+        let change_secret = state
+            .derive(2, change_depth)
+            .map_err(|e| JsError::new(&e))?;
         let change_hash = secret_hash(&change_secret);
         new_webcashes.push(crate::format_webcash(&change_secret, change));
         depth_updates.insert("CHANGE".into(), change_depth + 1);
@@ -308,9 +333,14 @@ pub fn wallet_prepare_pay(state_json: &str, amount_wats: i64, timestamp: &str) -
         });
     }
 
-    let webcashes: Vec<String> = selected.iter()
+    let webcashes: Vec<String> = selected
+        .iter()
         .filter_map(|s| {
-            state.outputs.iter().find(|o| o.secret == *s).map(|o| crate::format_webcash(s, o.amount))
+            state
+                .outputs
+                .iter()
+                .find(|o| o.secret == *s)
+                .map(|o| crate::format_webcash(s, o.amount))
         })
         .collect();
 
@@ -332,9 +362,13 @@ pub fn wallet_prepare_pay(state_json: &str, amount_wats: i64, timestamp: &str) -
 
 /// Prepare merge — returns effect for JS to POST /replace
 #[wasm_bindgen]
-pub fn wallet_prepare_merge(state_json: &str, max_outputs: usize, timestamp: &str) -> Result<String, JsError> {
-    let state: WalletState = serde_json::from_str(state_json)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+pub fn wallet_prepare_merge(
+    state_json: &str,
+    max_outputs: usize,
+    timestamp: &str,
+) -> Result<String, JsError> {
+    let state: WalletState =
+        serde_json::from_str(state_json).map_err(|e| JsError::new(&e.to_string()))?;
 
     let unspent: Vec<_> = state.outputs.iter().filter(|o| !o.spent).collect();
     if unspent.len() <= 1 {
@@ -345,10 +379,15 @@ pub fn wallet_prepare_merge(state_json: &str, max_outputs: usize, timestamp: &st
     let total: i64 = to_merge.iter().map(|o| o.amount).sum();
 
     let change_depth = state.get_depth("CHANGE");
-    let change_secret = state.derive(2, change_depth).map_err(|e| JsError::new(&e))?;
+    let change_secret = state
+        .derive(2, change_depth)
+        .map_err(|e| JsError::new(&e))?;
     let change_hash = secret_hash(&change_secret);
 
-    let webcashes: Vec<String> = to_merge.iter().map(|o| crate::format_webcash(&o.secret, o.amount)).collect();
+    let webcashes: Vec<String> = to_merge
+        .iter()
+        .map(|o| crate::format_webcash(&o.secret, o.amount))
+        .collect();
     let mark_spent: Vec<String> = to_merge.iter().map(|o| o.secret.clone()).collect();
 
     let result = WalletResult {
@@ -375,9 +414,13 @@ pub fn wallet_prepare_merge(state_json: &str, max_outputs: usize, timestamp: &st
 
 /// Build mining preimage — returns JSON preimage for JS to hash and submit
 #[wasm_bindgen]
-pub fn wallet_prepare_mine(state_json: &str, difficulty: u32, mining_amount: &str) -> Result<String, JsError> {
-    let state: WalletState = serde_json::from_str(state_json)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+pub fn wallet_prepare_mine(
+    state_json: &str,
+    difficulty: u32,
+    mining_amount: &str,
+) -> Result<String, JsError> {
+    let state: WalletState =
+        serde_json::from_str(state_json).map_err(|e| JsError::new(&e.to_string()))?;
 
     let depth = state.get_depth("MINING");
     let secret = state.derive(3, depth).map_err(|e| JsError::new(&e))?;
@@ -395,15 +438,27 @@ pub fn wallet_prepare_mine(state_json: &str, difficulty: u32, mining_amount: &st
         mining_depth: u64,
     }
 
-    let params = MineParams { secret, webcash_str, public_hash, amount_wats, difficulty, mining_depth: depth };
+    let params = MineParams {
+        secret,
+        webcash_str,
+        public_hash,
+        amount_wats,
+        difficulty,
+        mining_depth: depth,
+    };
     serde_json::to_string(&params).map_err(|e| JsError::new(&e.to_string()))
 }
 
 /// Store mined webcash directly (no replace needed)
 #[wasm_bindgen]
-pub fn wallet_store_mined(state_json: &str, secret: &str, amount_wats: i64, timestamp: &str) -> Result<String, JsError> {
-    let mut state: WalletState = serde_json::from_str(state_json)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+pub fn wallet_store_mined(
+    state_json: &str,
+    secret: &str,
+    amount_wats: i64,
+    timestamp: &str,
+) -> Result<String, JsError> {
+    let mut state: WalletState =
+        serde_json::from_str(state_json).map_err(|e| JsError::new(&e.to_string()))?;
 
     let public_hash = secret_hash(secret);
     let depth = state.get_depth("MINING");
@@ -473,8 +528,8 @@ pub fn wallet_apply_recover(
     health_results_json: &str,
     timestamp: &str,
 ) -> Result<String, JsError> {
-    let mut state: WalletState = serde_json::from_str(state_json)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let mut state: WalletState =
+        serde_json::from_str(state_json).map_err(|e| JsError::new(&e.to_string()))?;
 
     #[derive(Deserialize)]
     struct RecoverBatch {
@@ -494,16 +549,18 @@ pub fn wallet_apply_recover(
         spent: Option<bool>,
     }
 
-    let batch: RecoverBatch = serde_json::from_str(batch_json)
-        .map_err(|e| JsError::new(&e.to_string()))?;
-    let health: HealthResults = serde_json::from_str(health_results_json)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let batch: RecoverBatch =
+        serde_json::from_str(batch_json).map_err(|e| JsError::new(&e.to_string()))?;
+    let health: HealthResults =
+        serde_json::from_str(health_results_json).map_err(|e| JsError::new(&e.to_string()))?;
 
     let mut recovered = 0;
     let mut found_any = false;
 
     // Build lookup: hash → (secret, depth)
-    let lookup: HashMap<&str, (&str, u64)> = batch.hashes.iter()
+    let lookup: HashMap<&str, (&str, u64)> = batch
+        .hashes
+        .iter()
         .zip(batch.secrets.iter().zip(batch.depths.iter()))
         .map(|(h, (s, d))| (h.as_str(), (s.as_str(), *d)))
         .collect();
@@ -558,8 +615,8 @@ pub fn wallet_apply_recover(
 /// Export state as snapshot (for backup)
 #[wasm_bindgen]
 pub fn wallet_export_snapshot(state_json: &str) -> Result<String, JsError> {
-    let state: WalletState = serde_json::from_str(state_json)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let state: WalletState =
+        serde_json::from_str(state_json).map_err(|e| JsError::new(&e.to_string()))?;
 
     #[derive(Serialize)]
     struct Snapshot {
@@ -584,12 +641,23 @@ pub fn wallet_export_snapshot(state_json: &str) -> Result<String, JsError> {
 
     let snapshot = Snapshot {
         master_secret: state.master_secret,
-        unspent_outputs: state.outputs.iter()
+        unspent_outputs: state
+            .outputs
+            .iter()
             .filter(|o| !o.spent)
-            .map(|o| SnapshotOutput { secret: o.secret.clone(), amount: o.amount, created_at: o.created_at.clone() })
+            .map(|o| SnapshotOutput {
+                secret: o.secret.clone(),
+                amount: o.amount,
+                created_at: o.created_at.clone(),
+            })
             .collect(),
-        spent_hashes: state.spent_hashes.iter()
-            .map(|h| SnapshotSpent { hash: h.clone(), spent_at: String::new() })
+        spent_hashes: state
+            .spent_hashes
+            .iter()
+            .map(|h| SnapshotSpent {
+                hash: h.clone(),
+                spent_at: String::new(),
+            })
             .collect(),
         depths: state.depths,
     };
@@ -609,19 +677,35 @@ pub fn wallet_import_snapshot(snapshot_json: &str) -> Result<String, JsError> {
     }
 
     #[derive(Deserialize)]
-    struct SnapshotOutput { secret: String, amount: i64, created_at: String }
+    struct SnapshotOutput {
+        secret: String,
+        amount: i64,
+        created_at: String,
+    }
     #[derive(Deserialize)]
-    struct SnapshotSpent { hash: String }
+    struct SnapshotSpent {
+        hash: String,
+    }
 
-    let snapshot: Snapshot = serde_json::from_str(snapshot_json)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let snapshot: Snapshot =
+        serde_json::from_str(snapshot_json).map_err(|e| JsError::new(&e.to_string()))?;
 
     let state = WalletState {
         master_secret: snapshot.master_secret,
-        outputs: snapshot.unspent_outputs.into_iter().map(|o| {
-            let public_hash = secret_hash(&o.secret);
-            Output { secret: o.secret, public_hash, amount: o.amount, created_at: o.created_at, spent: false }
-        }).collect(),
+        outputs: snapshot
+            .unspent_outputs
+            .into_iter()
+            .map(|o| {
+                let public_hash = secret_hash(&o.secret);
+                Output {
+                    secret: o.secret,
+                    public_hash,
+                    amount: o.amount,
+                    created_at: o.created_at,
+                    spent: false,
+                }
+            })
+            .collect(),
         spent_hashes: snapshot.spent_hashes.into_iter().map(|s| s.hash).collect(),
         depths: snapshot.depths,
     };

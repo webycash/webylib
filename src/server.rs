@@ -129,12 +129,24 @@ impl ServerClient {
 
     /// POST JSON body. On WASM uses text/plain to avoid CORS preflight.
     /// The webcash server parses JSON regardless of Content-Type.
-    fn post_json_body<B: serde::Serialize>(&self, url: &str, body: &B) -> Result<reqwest::RequestBuilder> {
+    fn post_json_body<B: serde::Serialize>(
+        &self,
+        url: &str,
+        body: &B,
+    ) -> Result<reqwest::RequestBuilder> {
         let json_str = serde_json::to_string(body)?;
         #[cfg(target_arch = "wasm32")]
-        { Ok(self.client.post(url).body(json_str)) }
+        {
+            Ok(self.client.post(url).body(json_str))
+        }
         #[cfg(not(target_arch = "wasm32"))]
-        { Ok(self.client.post(url).header("Content-Type", "application/json").body(json_str)) }
+        {
+            Ok(self
+                .client
+                .post(url)
+                .header("Content-Type", "application/json")
+                .body(json_str))
+        }
     }
 
     /// Check the health status of webcash entries

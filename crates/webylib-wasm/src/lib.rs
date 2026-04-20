@@ -27,11 +27,17 @@ const UNIT: i64 = 100_000_000; // 10^8
 // secret = SHA256(tag ‖ tag ‖ master_secret ‖ chain_code_be64 ‖ depth_be64)
 
 #[wasm_bindgen]
-pub fn derive_secret(master_secret_hex: &str, chain_code: u32, depth: u64) -> Result<String, JsError> {
-    let master_bytes = hex::decode(master_secret_hex)
-        .map_err(|_| JsError::new("invalid master secret hex"))?;
+pub fn derive_secret(
+    master_secret_hex: &str,
+    chain_code: u32,
+    depth: u64,
+) -> Result<String, JsError> {
+    let master_bytes =
+        hex::decode(master_secret_hex).map_err(|_| JsError::new("invalid master secret hex"))?;
     if master_bytes.len() != 32 {
-        return Err(JsError::new("master secret must be 32 bytes (64 hex chars)"));
+        return Err(JsError::new(
+            "master secret must be 32 bytes (64 hex chars)",
+        ));
     }
 
     let tag = Sha256::digest(b"webcashwalletv1");
@@ -52,8 +58,7 @@ pub fn derive_secret(master_secret_hex: &str, chain_code: u32, depth: u64) -> Re
 #[wasm_bindgen]
 pub fn generate_master_secret() -> Result<String, JsError> {
     let mut bytes = [0u8; 32];
-    getrandom::getrandom(&mut bytes)
-        .map_err(|e| JsError::new(&format!("RNG failed: {}", e)))?;
+    getrandom::getrandom(&mut bytes).map_err(|e| JsError::new(&format!("RNG failed: {}", e)))?;
     let hex_str = hex::encode(bytes);
     bytes.zeroize();
     Ok(hex_str)
@@ -93,7 +98,9 @@ pub fn parse_webcash(s: &str) -> Result<JsValue, JsError> {
 
     let parts: Vec<&str> = s[1..].split(':').collect();
     if parts.len() < 3 {
-        return Err(JsError::new("invalid webcash format: expected e<amount>:secret:<hex>"));
+        return Err(JsError::new(
+            "invalid webcash format: expected e<amount>:secret:<hex>",
+        ));
     }
     if parts[1] != "secret" {
         return Err(JsError::new("expected 'secret' type"));
@@ -330,8 +337,7 @@ fn encrypt_data_internal(plaintext: &[u8], password: &str) -> Result<String, Str
         .hash_password_into(password.as_bytes(), &salt, &mut key_bytes)
         .map_err(|e| e.to_string())?;
 
-    let cipher =
-        Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| e.to_string())?;
     key_bytes.zeroize();
 
     let mut nonce_bytes = [0u8; 12];
@@ -377,8 +383,7 @@ fn decrypt_data_internal(encrypted_json: &str, password: &str) -> Result<Vec<u8>
         .hash_password_into(password.as_bytes(), &encrypted.salt, &mut key_bytes)
         .map_err(|e| e.to_string())?;
 
-    let cipher =
-        Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| e.to_string())?;
     key_bytes.zeroize();
 
     let nonce = GenericArray::from_slice(&encrypted.nonce);
@@ -434,7 +439,8 @@ mod tests {
 
     #[test]
     fn test_parse_webcash_valid() {
-        let input = "e0.0001:secret:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let input =
+            "e0.0001:secret:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         let (secret, wats) = parse_webcash_internal(input).unwrap();
         assert_eq!(secret.len(), 64);
         assert_eq!(wats, 10_000);

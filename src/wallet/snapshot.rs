@@ -1,7 +1,7 @@
 //! Wallet snapshot export/import for backup and recovery.
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use super::Wallet;
 use crate::error::Result;
@@ -42,12 +42,20 @@ pub(crate) struct WalletExport {
 impl Wallet {
     pub fn export_snapshot(&self) -> Result<WalletSnapshot> {
         let master_secret = self.store.get_meta("master_secret")?.unwrap_or_default();
-        let unspent = self.store.get_unspent_full()?
+        let unspent = self
+            .store
+            .get_unspent_full()?
             .into_iter()
-            .map(|(secret, amount, created_at)| UnspentOutputSnapshot { secret, amount, created_at })
+            .map(|(secret, amount, created_at)| UnspentOutputSnapshot {
+                secret,
+                amount,
+                created_at,
+            })
             .collect();
 
-        let spent = self.store.get_spent_hashes_with_time()?
+        let spent = self
+            .store
+            .get_spent_hashes_with_time()?
             .into_iter()
             .map(|(hash_blob, spent_at)| SpentHashSnapshot {
                 hash: hex::encode(hash_blob),
@@ -55,12 +63,19 @@ impl Wallet {
             })
             .collect();
 
-        let depths = self.store.get_all_depths()?
+        let depths = self
+            .store
+            .get_all_depths()?
             .into_iter()
             .map(|(k, v)| (k, v as i64))
             .collect();
 
-        Ok(WalletSnapshot { master_secret, unspent_outputs: unspent, spent_hashes: spent, depths })
+        Ok(WalletSnapshot {
+            master_secret,
+            unspent_outputs: unspent,
+            spent_hashes: spent,
+            depths,
+        })
     }
 
     pub fn import_snapshot(&self, snapshot: &WalletSnapshot) -> Result<()> {
@@ -101,14 +116,16 @@ impl Wallet {
             exported_at: chrono::Utc::now().to_rfc3339(),
         };
 
-        serde_json::to_vec(&wallet_export)
-            .map_err(|e| crate::error::Error::wallet(format!("Failed to serialize wallet data: {}", e)))
+        serde_json::to_vec(&wallet_export).map_err(|e| {
+            crate::error::Error::wallet(format!("Failed to serialize wallet data: {}", e))
+        })
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) async fn import_wallet_data(&self, data: &[u8]) -> Result<()> {
-        let wallet_export: WalletExport = serde_json::from_slice(data)
-            .map_err(|e| crate::error::Error::wallet(format!("Failed to deserialize wallet data: {}", e)))?;
+        let wallet_export: WalletExport = serde_json::from_slice(data).map_err(|e| {
+            crate::error::Error::wallet(format!("Failed to deserialize wallet data: {}", e))
+        })?;
 
         self.store.clear_all()?;
 

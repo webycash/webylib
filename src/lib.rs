@@ -35,14 +35,14 @@ pub mod server;
 pub mod webcash;
 
 // ── Native-only (SQLite, tokio, reqwest, keyring) ───────────────
+#[cfg(feature = "ffi")]
+pub mod ffi;
+#[cfg(feature = "native")]
+pub mod miner;
 #[cfg(feature = "native")]
 pub mod passkey;
 #[cfg(any(feature = "native", feature = "wasm"))]
 pub mod wallet;
-#[cfg(feature = "native")]
-pub mod miner;
-#[cfg(feature = "ffi")]
-pub mod ffi;
 
 // ── Re-exports ──────────────────────────────────────────────────
 pub use amount::Amount;
