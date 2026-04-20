@@ -5,6 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.10] - 2026-04-21
+
+### Fixed
+- **Testnet URL**: Restored `weby.cash` proxy URL for testnet (was broken by direct Lambda endpoint).
+
+## [0.3.9] - 2026-04-20
+
+### Changed
+- **Testnet URL**: Switch to direct Lambda endpoint (bypass Cloudflare proxy).
+
+## [0.3.8] - 2026-04-19
+
+### Fixed
+- **MemStore duplicate insert**: Recovery was multiplying balance by inserting duplicates.
+
+## [0.3.7] - 2026-04-18
+
+### Fixed
+- **PAY chain recovery**: Recovery now scans PAY chain in addition to RECEIVE.
+- **Depth cap removed**: No longer caps recovery at depth 1000.
+
+## [0.3.6] - 2026-04-17
+
+### Added
+- **IndexedDB persistence**: WASM wallets can persist state to IndexedDB (`wallet/idb.rs`).
+
+## [0.3.5] - 2026-04-17
+
+### Fixed
+- **WASM CORS**: Removed Content-Type header on POST requests to avoid CORS preflight.
+
+## [0.3.4] - 2026-04-16
+
+### Added
+- **JsonStore backend**: In-memory JSON-serializable store with atomic batch operations.
+- Zero compiler warnings across all targets.
+
+## [0.3.3] - 2026-04-16
+
+### Changed
+- **Wallet module on WASM**: Full wallet operations available on WASM target (not just types).
+- Operations use `ServerClient` directly (no SQLite on WASM).
+
+## [0.3.2] - 2026-04-16
+
+### Changed
+- **ServerClient on WASM**: reqwest 0.12 with browser fetch backend for WASM targets.
+
+## [0.3.1] - 2026-04-16
+
+### Added
+- **WASM support**: Native dependencies (SQLite, file I/O) gated behind features.
+  Protocol definitions, types, and crypto always available on wasm32.
+
+## [0.3.0] - 2026-04-15
+
+### Changed
+- **Major version bump**: WASM-first architecture. All native-only code gated behind `native` feature.
+- `webylib = "0.3"` is the new semver range for downstream consumers.
+- README updated to reference `"0.3"` dependency.
+
 ## [0.2.6] - 2026-04-15
 
 ### Changed

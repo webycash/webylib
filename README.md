@@ -27,8 +27,10 @@
 
 ```toml
 [dependencies]
-webylib = "0.2"
+webylib = "0.3"
 ```
+
+Check [crates.io/crates/webylib](https://crates.io/crates/webylib) for the latest published version.
 
 **CLI tool (macOS / Linux):**
 
