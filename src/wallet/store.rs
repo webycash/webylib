@@ -570,7 +570,11 @@ pub(crate) mod mem {
         }
 
         fn insert_output(&self, secret_hash: &[u8], secret: &str, amount: i64) -> Result<()> {
-            self.0.borrow_mut().outputs.push(MemOutput {
+            let mut state = self.0.borrow_mut();
+            if state.outputs.iter().any(|o| o.secret_hash == secret_hash) {
+                return Err(Error::wallet("UNIQUE constraint: output already exists"));
+            }
+            state.outputs.push(MemOutput {
                 secret_hash: secret_hash.to_vec(),
                 secret: secret.to_string(),
                 amount,
