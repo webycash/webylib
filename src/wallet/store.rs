@@ -626,7 +626,7 @@ pub(crate) mod mem {
                 .filter(|o| !o.spent)
                 .map(|o| (o.secret.clone(), o.amount))
                 .collect();
-            v.sort_by(|a, b| b.1.cmp(&a.1));
+            v.sort_by_key(|x| std::cmp::Reverse(x.1));
             Ok(v)
         }
 
@@ -872,7 +872,7 @@ pub mod json {
                     .filter(|o| !o.spent)
                     .map(|o| (o.secret.clone(), o.amount))
                     .collect();
-                v.sort_by(|a, b| b.1.cmp(&a.1));
+                v.sort_by_key(|x| std::cmp::Reverse(x.1));
                 v
             })
         }
@@ -1034,7 +1034,7 @@ pub mod json {
                         .filter(|o| !o.spent)
                         .map(|o| (o.secret.clone(), o.amount))
                         .collect();
-                    v.sort_by(|a, b| b.1.cmp(&a.1));
+                    v.sort_by_key(|x| std::cmp::Reverse(x.1));
                     Ok(v)
                 }
                 fn get_all_outputs(&self) -> Result<Vec<(String, i64, String, i32)>> {
