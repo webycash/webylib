@@ -136,6 +136,8 @@ dirs-next = { version = "2", optional = true }
 [dev-dependencies]
 tempfile = "3.0"
 mockito = "1.7.0"
+ed25519-dalek = "2"
+serde_json = "1"
 
 [features]
 default = ["native", "cli"]
