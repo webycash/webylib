@@ -276,6 +276,16 @@ impl Wallet {
 
     pub async fn close(mut self) -> Result<()> {
         if self.is_encrypted {
+            // SQLite holds an open file handle on `self.path`. If we encrypt
+            // the file while the connection is still alive, the connection's
+            // drop can flush its journal/WAL back to the path and clobber the
+            // encrypted JSON we just wrote. Swap the store with an in-memory
+            // JSON store so the SQLite connection drops here, BEFORE we read
+            // and rewrite the file in encrypt_database().
+            let dummy: Box<dyn Store + Send + Sync> =
+                Box::new(store::json::JsonStore::new(None));
+            let old_store = std::mem::replace(&mut self.store, dummy);
+            drop(old_store);
             self.encrypt_database().await?;
         }
         if let Some(passkey_mutex) = self.passkey_encryption.take() {
