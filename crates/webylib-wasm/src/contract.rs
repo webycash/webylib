@@ -64,6 +64,7 @@ pub fn execute_contract(
 /// return its strict-encoded bytes. Real wallets receive these bytes
 /// from the contract issuer (fetched once and cached by ContractId).
 #[wasm_bindgen(js_name = sampleAlwaysOkLib)]
+#[allow(unexpected_cfgs)]
 pub fn sample_always_ok_lib() -> Result<Vec<u8>, JsValue> {
     let code: Vec<Instr<LibId>> = aluasm! {
        routine MAIN:
@@ -77,6 +78,7 @@ pub fn sample_always_ok_lib() -> Result<Vec<u8>, JsValue> {
 
 /// Sample helper: build a library that explicitly fails CK.
 #[wasm_bindgen(js_name = sampleAlwaysFailLib)]
+#[allow(unexpected_cfgs)]
 pub fn sample_always_fail_lib() -> Result<Vec<u8>, JsValue> {
     let code: Vec<Instr<LibId>> = aluasm! {
        routine MAIN:
@@ -121,6 +123,7 @@ fn decode_lib(_bytes: &[u8]) -> Option<Lib> {
 // In-process executor (no JS export) — exercised by the unit/smoke tests
 // since the byte-codec helpers above are stubs pending asset-rgb's
 // canonical strict-types serialisation.
+#[cfg(test)]
 pub(crate) fn execute_lib_inproc(
     lib: &Lib,
     entry_offset: u16,

@@ -45,8 +45,8 @@ pub fn derive_secret(
     let tag = Sha256::digest(b"webcashwalletv1");
 
     let mut hasher = Sha256::new();
-    hasher.update(&tag);
-    hasher.update(&tag);
+    hasher.update(tag);
+    hasher.update(tag);
     hasher.update(&master_bytes);
     hasher.update((chain_code as u64).to_be_bytes());
     hasher.update(depth.to_be_bytes());
@@ -173,8 +173,8 @@ fn parse_amount_str(s: &str) -> Result<i64, JsError> {
     // Strip 'e' or '₩' prefix
     let s = if let Some(stripped) = s.strip_prefix('e') {
         stripped
-    } else if s.starts_with('\u{20A9}') {
-        &s[3..] // ₩ is 3 bytes in UTF-8
+    } else if let Some(stripped) = s.strip_prefix('\u{20A9}') {
+        stripped
     } else {
         s
     };
@@ -330,6 +330,7 @@ pub fn decrypt_data(encrypted_json: &str, password: &str) -> Result<Vec<u8>, JsE
 }
 
 /// Internal encrypt without JsError (for native tests).
+#[cfg(test)]
 fn encrypt_data_internal(plaintext: &[u8], password: &str) -> Result<String, String> {
     let mut salt = [0u8; 32];
     getrandom::getrandom(&mut salt).map_err(|e| e.to_string())?;
@@ -372,6 +373,7 @@ fn encrypt_data_internal(plaintext: &[u8], password: &str) -> Result<String, Str
     serde_json::to_string(&encrypted).map_err(|e| e.to_string())
 }
 
+#[cfg(test)]
 fn decrypt_data_internal(encrypted_json: &str, password: &str) -> Result<Vec<u8>, String> {
     let encrypted: EncryptedData =
         serde_json::from_str(encrypted_json).map_err(|e| e.to_string())?;

@@ -56,7 +56,7 @@ pub fn str_len(s: &str) -> i32 {
 #[ffi_export]
 pub async fn double_eventually(x: i64) -> Result<i64, FfiError> {
     tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-    Ok(x.checked_mul(2).ok_or(FfiError::Overflow)?)
+    x.checked_mul(2).ok_or(FfiError::Overflow)
 }
 
 /// Async returning `Result<(), E>`. Demonstrates the unit-result path.
