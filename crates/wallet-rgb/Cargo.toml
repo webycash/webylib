@@ -10,6 +10,9 @@ repository.workspace = true
 
 [dependencies]
 webylib-core = { workspace = true }
+webylib-server-client = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
-# rgb-core / rgb-std / aluvm-sdk wired in M4 after WASM viability gate.
+# Real RGB transition validation happens client-side via webylib-wasm/contract.rs
+# (browser) or webylib-aluvm (native) — both load aluvm 0.12 + the contract's
+# compiled library and run the transition before this wallet calls /replace.

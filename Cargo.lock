@@ -2771,6 +2771,10 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "webylib-server-client",
+ "webylib-wallet-rgb",
+ "webylib-wallet-voucher",
+ "webylib-wallet-webcash",
  "zeroize",
 ]
 
@@ -2890,11 +2894,9 @@ version = "0.3.12"
 dependencies = [
  "anyhow",
  "async-trait",
- "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "tokio",
  "webylib-proto-client",
 ]
 
@@ -2921,6 +2923,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "webylib-core",
+ "webylib-server-client",
 ]
 
 [[package]]
@@ -2930,6 +2933,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "webylib-core",
+ "webylib-server-client",
 ]
 
 [[package]]
@@ -2939,6 +2943,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "webylib-core",
+ "webylib-server-client",
 ]
 
 [[package]]

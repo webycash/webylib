@@ -10,5 +10,6 @@ repository.workspace = true
 
 [dependencies]
 webylib-core = { workspace = true }
+webylib-server-client = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

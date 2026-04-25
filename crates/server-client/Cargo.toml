@@ -9,9 +9,9 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
-default = ["native"]
-native = ["dep:reqwest", "dep:tokio"]
-wasm = []
+default = []
+# Reserved for future async + reqwest variants. The default Client uses
+# pure std::net for portability (works on native + wasm32-wasi).
 
 [dependencies]
 webylib-proto-client = { workspace = true }
@@ -20,5 +20,3 @@ serde_json = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
-tokio = { version = "1.0", features = ["rt-multi-thread", "macros"], optional = true }
