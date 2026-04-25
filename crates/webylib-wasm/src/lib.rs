@@ -7,6 +7,8 @@
 //! All algorithms produce identical output to the native webylib crate.
 
 pub mod wallet;
+pub mod storage;
+pub mod contract;
 
 use aes_gcm::aead::{generic_array::GenericArray, Aead, KeyInit};
 use aes_gcm::Aes256Gcm;

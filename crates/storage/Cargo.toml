@@ -9,7 +9,8 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
-default = ["sqlite", "json", "mem"]
+# Defaults are WASM-compatible. Native consumers add `sqlite` explicitly.
+default = ["json", "mem"]
 # Each backend is a separate cargo feature so consumers (especially WASM)
 # can opt out of native-only deps cleanly.
 sqlite = ["dep:rusqlite"]

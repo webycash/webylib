@@ -13,6 +13,14 @@ keywords = ["webcash", "wallet", "wasm", "cryptography"]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# Wallet-side storage trait + MemStore + JsonStore. SQLite excluded
+# (rusqlite has C deps; not WASM-compatible). IndexedDB is opt-in.
+webylib-storage = { workspace = true, default-features = false, features = ["mem", "json"] }
+# Client-side AluVM contract execution. RGB validation is client-side
+# in RGB's design — the server only tracks ownership; the wallet runs
+# the contract's transition rules locally before submitting /replace
+# or /transfer.
+aluvm = "0.12"
 wasm-bindgen = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
