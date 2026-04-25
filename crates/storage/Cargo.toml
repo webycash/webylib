@@ -9,8 +9,12 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
-# Defaults are WASM-compatible. Native consumers add `sqlite` explicitly.
-default = ["json", "mem"]
+# All three default backends compile cleanly on native AND wasm32:
+#   - mem: pure-Rust HashMap state
+#   - json: serde_json over the in-memory state
+#   - sqlite: rusqlite (default-features=false in workspace.dependencies
+#     so WASM consumers can opt out)
+default = ["json", "mem", "sqlite"]
 # Each backend is a separate cargo feature so consumers (especially WASM)
 # can opt out of native-only deps cleanly.
 sqlite = ["dep:rusqlite"]

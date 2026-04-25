@@ -35,7 +35,7 @@ repository = "https://github.com/webycash/webylib"
 webylib-macros = { path = "crates/macros" }
 webylib-crypto = { path = "crates/crypto" }
 webylib-hd = { path = "crates/hd" }
-webylib-storage = { path = "crates/storage" }
+webylib-storage = { path = "crates/storage", default-features = false }
 webylib-proto-client = { path = "crates/proto-client" }
 webylib-auth = { path = "crates/auth" }
 webylib-server-client = { path = "crates/server-client" }
