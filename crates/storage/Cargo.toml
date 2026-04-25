@@ -9,15 +9,27 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
-default = []
-sqlite = []
-indexeddb = []
+default = ["sqlite", "json", "mem"]
+# Each backend is a separate cargo feature so consumers (especially WASM)
+# can opt out of native-only deps cleanly.
+sqlite = ["dep:rusqlite"]
+json = ["dep:serde_json"]
+mem = []
+indexeddb = ["dep:web-sys", "dep:js-sys", "dep:wasm-bindgen"]
 
 [dependencies]
 serde = { workspace = true }
-serde_json = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 hex = { workspace = true }
-# rusqlite (sqlite feature) and web-sys (indexeddb feature) wired in M2.
+
+# Backend-specific (feature-gated)
+serde_json = { workspace = true, optional = true }
+rusqlite = { version = "0.37", features = ["bundled"], optional = true }
+web-sys = { version = "0.3", optional = true }
+js-sys = { version = "0.3", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

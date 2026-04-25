@@ -2596,9 +2596,13 @@ dependencies = [
  "anyhow",
  "async-trait",
  "hex",
+ "js-sys",
+ "rusqlite",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
