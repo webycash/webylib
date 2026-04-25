@@ -1,6 +1,58 @@
 [workspace]
 resolver = "2"
-members = [".", "crates/webylib-wasm"]
+members = [
+    # Existing: legacy webylib root package + WASM crate
+    ".",
+    "crates/webylib-wasm",
+
+    # New (M0 scaffolding for the asset-gated refactor; populated in M2+)
+    "crates/macros",
+    "crates/crypto",
+    "crates/hd",
+    "crates/storage",
+    "crates/proto-client",
+    "crates/auth",
+    "crates/server-client",
+    "crates/webylib-core",
+    "crates/wallet-webcash",
+    "crates/wallet-rgb",
+    "crates/wallet-voucher",
+    "crates/webylib-ffi",
+    "crates/webylib-cli",
+    "crates/conformance",
+]
+
+[workspace.package]
+version = "0.3.12"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+authors = ["Webycash Developers"]
+repository = "https://github.com/webycash/webylib"
+
+[workspace.dependencies]
+# Internal crate paths (workspace members reference each other through these)
+webylib-macros = { path = "crates/macros" }
+webylib-crypto = { path = "crates/crypto" }
+webylib-hd = { path = "crates/hd" }
+webylib-storage = { path = "crates/storage" }
+webylib-proto-client = { path = "crates/proto-client" }
+webylib-auth = { path = "crates/auth" }
+webylib-server-client = { path = "crates/server-client" }
+webylib-core = { path = "crates/webylib-core" }
+webylib-wallet-webcash = { path = "crates/wallet-webcash" }
+webylib-wallet-rgb = { path = "crates/wallet-rgb" }
+webylib-wallet-voucher = { path = "crates/wallet-voucher" }
+
+# Pinned versions for shared deps
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+anyhow = "1.0"
+async-trait = "0.1"
+sha2 = "0.10"
+hex = "0.4"
+proptest = "1"
 
 [package]
 name = "webylib"

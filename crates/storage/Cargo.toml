@@ -1,0 +1,23 @@
+[package]
+name = "webylib-storage"
+description = "Wallet-side Store trait + SqliteStore (native) + MemStore + IndexedDB. Generic over Asset; partitioned per (contract_id, issuer_fp) for RGB/Voucher."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+sqlite = []
+indexeddb = []
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+hex = { workspace = true }
+# rusqlite (sqlite feature) and web-sys (indexeddb feature) wired in M2.

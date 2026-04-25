@@ -1,0 +1,15 @@
+[package]
+name = "webylib-wallet-rgb"
+description = "RGB specialization of the generic Wallet. RGB20 splittable + RGB21 non-splittable. Issuer-namespaced. WASM AluVM."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+webylib-core = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+# rgb-core / rgb-std / aluvm-sdk wired in M4 after WASM viability gate.

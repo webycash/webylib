@@ -1,0 +1,14 @@
+[package]
+name = "webylib-wallet-voucher"
+description = "Voucher specialization of the generic Wallet. Always splittable, issuer-namespaced bearer credits."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+webylib-core = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }

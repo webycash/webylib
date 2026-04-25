@@ -1,0 +1,22 @@
+[package]
+name = "webylib-ffi"
+description = "Native-only C ABI for webylib. Macro-generated; no hand-written extern \"C\" outside the macro output. Owns the tokio runtime; async via callbacks."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+name = "webylib_ffi"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+webylib-core = { workspace = true }
+webylib-wallet-webcash = { workspace = true }
+webylib-wallet-rgb = { workspace = true }
+webylib-wallet-voucher = { workspace = true }
+webylib-macros = { workspace = true }
+tokio = { version = "1.0", features = ["full"] }
+thiserror = { workspace = true }
