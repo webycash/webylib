@@ -13,16 +13,27 @@
 use thiserror::Error;
 use webylib_server_client::{Client, ClientError};
 
+/// Failure modes from the wallet's verb methods.
 #[derive(Debug, Error)]
 pub enum WalletError {
+    /// Underlying HTTP / transport / encode failure from the
+    /// server-client layer.
     #[error("client: {0}")]
     Client(#[from] ClientError),
+    /// Wallet-side precondition failed (e.g. empty inputs / outputs)
+    /// — caught locally before the network round-trip.
     #[error("invariant: {0}")]
     Invariant(&'static str),
 }
 
+/// Convenience alias used across this crate for results from
+/// any `VoucherWallet` method.
 pub type WalletResult<T> = Result<T, WalletError>;
 
+/// Voucher specialisation: always-splittable, issuer-namespaced
+/// bearer credits. Verbs `pay` (N→M) and `insert` (1:1) both map
+/// to the server's single `/api/v1/replace` endpoint with
+/// `(contract_id, issuer_fp)` namespace enforcement.
 pub struct VoucherWallet {
     client: Client,
 }

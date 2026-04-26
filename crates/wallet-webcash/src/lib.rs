@@ -16,16 +16,27 @@
 use thiserror::Error;
 use webylib_server_client::{Client, ClientError};
 
+/// Failure modes from the wallet's verb methods.
 #[derive(Debug, Error)]
 pub enum WalletError {
+    /// Underlying HTTP / transport / encode failure from the
+    /// server-client layer.
     #[error("client: {0}")]
     Client(#[from] ClientError),
+    /// Wallet-side precondition failed (e.g. empty inputs / outputs)
+    /// — caught locally before the network round-trip.
     #[error("invariant: {0}")]
     Invariant(&'static str),
 }
 
+/// Convenience alias used across this crate for results from
+/// any `WebcashWallet` method.
 pub type WalletResult<T> = Result<T, WalletError>;
 
+/// Webcash specialisation of the asset-flavored wallet. Wraps a
+/// shared HTTP `Client` with the verbs `pay` (N→M with
+/// conservation) and `insert` (1:1 receive-and-rotate). Both map
+/// to the server's single `/api/v1/replace` endpoint.
 pub struct WebcashWallet {
     client: Client,
 }

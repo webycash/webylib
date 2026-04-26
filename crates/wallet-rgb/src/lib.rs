@@ -20,16 +20,30 @@
 use thiserror::Error;
 use webylib_server_client::{Client, ClientError};
 
+/// Failure modes from the wallet's verb methods.
 #[derive(Debug, Error)]
 pub enum WalletError {
+    /// Underlying HTTP / transport / encode failure from the
+    /// server-client layer.
     #[error("client: {0}")]
     Client(#[from] ClientError),
+    /// Wallet-side precondition failed (e.g. empty inputs / outputs)
+    /// — caught locally before the network round-trip.
     #[error("invariant: {0}")]
     Invariant(&'static str),
 }
 
+/// Convenience alias used across this crate for results from
+/// any `RgbWallet` method.
 pub type WalletResult<T> = Result<T, WalletError>;
 
+/// RGB specialisation covering BOTH RGB20 fungible and RGB21
+/// collectible. Verbs:
+///   - `transfer` (any arity for RGB20; 1:1 for RGB21)
+///   - `insert` (1:1 receive-and-rotate, same namespace)
+///
+/// Both map to the server's single `/api/v1/replace` endpoint with
+/// `(contract_id, issuer_fp)` namespace enforcement.
 pub struct RgbWallet {
     client: Client,
 }
