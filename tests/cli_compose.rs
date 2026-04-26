@@ -368,3 +368,76 @@ fn webyc_burn_consumes_a_mined_secret() {
         "burn didn't mark spent: {body}"
     );
 }
+
+/// `webyca stats` returns 0 and prints the server's economy snapshot
+/// for every flavor.
+#[test]
+fn webyc_stats_against_every_flavor() {
+    if !ensure_compose() {
+        return;
+    }
+    let webyc = webyc_path();
+    if !webyc.exists() {
+        return;
+    }
+    for port in [PORT_WEBCASH, PORT_RGB_FUNGIBLE, PORT_VOUCHER] {
+        let url = format!("http://127.0.0.1:{port}");
+        let out = Command::new(&webyc)
+            .args(["--server", &url, "stats"])
+            .output()
+            .expect("spawn webyc stats");
+        assert!(
+            out.status.success(),
+            "[port {port}] stats failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("total_circulation") && stdout.contains("epoch"),
+            "[port {port}] unexpected stdout: {stdout}"
+        );
+    }
+}
+
+/// `webyca mining-report` accepts a freshly-found PoW preimage and
+/// returns 0. Verifies the resulting hash is now mined (unspent).
+#[test]
+fn webyc_mining_report_via_cli() {
+    if !ensure_compose() {
+        return;
+    }
+    let webyc = webyc_path();
+    if !webyc.exists() {
+        return;
+    }
+    let url = format!("http://127.0.0.1:{PORT_WEBCASH}");
+
+    let secret = run_unique_secret(0x80);
+    let subsidy = run_unique_secret(0x81);
+    let template = format!(
+        r#"{{"webcash":["e1.0:secret:{secret}"],"subsidy":["e0.5:secret:{subsidy}"],"timestamp":1714003200,"difficulty":4,"nonce":__N__}}"#
+    );
+    let preimage = find_pow(&template, 4);
+
+    let out = Command::new(&webyc)
+        .args(["--server", &url, "mining-report", "--preimage", &preimage])
+        .output()
+        .expect("spawn webyc mining-report");
+    assert!(
+        out.status.success(),
+        "mining-report failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // The mined secret's hash must now be unspent in the registry.
+    let h = sha256_hex(&secret);
+    let wallet = WebcashWallet::new(url.clone());
+    let body = wallet
+        .server()
+        .health_check(&[format!("e1.0:public:{h}")])
+        .expect("hc");
+    assert!(
+        body.contains(r#""spent": false"#),
+        "mining-report didn't mark hash unspent: {body}"
+    );
+}
