@@ -68,6 +68,22 @@ enum Flavor {
         #[arg(long, value_delimiter = ',')]
         tokens: Vec<String>,
     },
+    /// Permanently destroy a single secret. The server marks it spent
+    /// without minting a replacement — there is no recovery.
+    Burn {
+        /// The secret token to destroy, in the asset's wire format.
+        #[arg(long)]
+        secret: String,
+    },
+    /// Submit a PoW preimage to /api/v1/mining_report. Caller is
+    /// responsible for finding a preimage that satisfies the current
+    /// difficulty target — see `webyca target`.
+    MiningReport {
+        /// The preimage string (raw JSON or base64 — the server
+        /// auto-detects).
+        #[arg(long)]
+        preimage: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -144,7 +160,23 @@ fn main() -> Result<()> {
         Flavor::Voucher { cmd } => run_voucher(&server, cmd),
         Flavor::Target => run_target(&server),
         Flavor::Check { tokens } => run_check(&server, tokens),
+        Flavor::Burn { secret } => run_burn(&server, &secret),
+        Flavor::MiningReport { preimage } => run_mining_report(&server, &preimage),
     }
+}
+
+fn run_burn(server: &str, secret: &str) -> Result<()> {
+    let client = Client::new(server.to_string());
+    client.burn(secret).context("burn")?;
+    println!("ok: burned");
+    Ok(())
+}
+
+fn run_mining_report(server: &str, preimage: &str) -> Result<()> {
+    let client = Client::new(server.to_string());
+    client.mining_report(preimage).context("mining_report")?;
+    println!("ok: mining_report accepted");
+    Ok(())
 }
 
 fn run_target(server: &str) -> Result<()> {
@@ -323,6 +355,32 @@ mod tests {
                 assert_eq!(tokens.len(), 2);
                 assert_eq!(tokens[0], "e1:public:aaa");
             }
+            _ => panic!("wrong arm"),
+        }
+    }
+
+    #[test]
+    fn burn_subcommand_takes_single_secret() {
+        let cli = Cli::try_parse_from([
+            "webyca", "--server", "http://x", "burn",
+            "--secret", "e1.0:secret:deadbeef",
+        ])
+        .expect("parse");
+        match cli.flavor {
+            Flavor::Burn { secret } => assert_eq!(secret, "e1.0:secret:deadbeef"),
+            _ => panic!("wrong arm"),
+        }
+    }
+
+    #[test]
+    fn mining_report_subcommand_takes_preimage() {
+        let cli = Cli::try_parse_from([
+            "webyca", "--server", "http://x", "mining-report",
+            "--preimage", "{\"webcash\":[],\"subsidy\":[],\"timestamp\":1,\"difficulty\":4,\"nonce\":0}",
+        ])
+        .expect("parse");
+        match cli.flavor {
+            Flavor::MiningReport { preimage } => assert!(preimage.contains("webcash")),
             _ => panic!("wrong arm"),
         }
     }
