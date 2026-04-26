@@ -35,12 +35,21 @@ pub struct RgbWallet {
 }
 
 impl RgbWallet {
+    /// Construct a new wallet pointed at a running `server-rgb` (or
+    /// `server-rgb-collectible`).
+    ///
+    /// ```no_run
+    /// use webylib_wallet_rgb::RgbWallet;
+    /// let wallet = RgbWallet::new("http://127.0.0.1:8182");
+    /// # let _ = wallet;
+    /// ```
     pub fn new(server_url: impl Into<String>) -> Self {
         Self {
             client: Client::new(server_url),
         }
     }
 
+    /// Borrow the underlying transport client.
     pub fn server(&self) -> &Client {
         &self.client
     }

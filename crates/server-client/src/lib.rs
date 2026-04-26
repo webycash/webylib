@@ -35,6 +35,13 @@ pub struct Client {
 impl Client {
     /// Construct a client bound to a server base URL, e.g.
     /// `http://localhost:8181` or `https://webcash.org`.
+    ///
+    /// ```
+    /// use webylib_server_client::Client;
+    /// // Trailing slash on the base is normalised away.
+    /// let c = Client::new("http://localhost:8181/");
+    /// assert_eq!(c.base_url(), "http://localhost:8181/");
+    /// ```
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {
             base_url: base_url.into(),

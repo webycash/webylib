@@ -31,12 +31,23 @@ pub struct WebcashWallet {
 }
 
 impl WebcashWallet {
+    /// Construct a new wallet pointed at a running `server-webcash`.
+    ///
+    /// ```no_run
+    /// use webylib_wallet_webcash::WebcashWallet;
+    /// let wallet = WebcashWallet::new("http://127.0.0.1:8181");
+    /// // Now `wallet.pay(...)` and `wallet.insert(...)` are usable.
+    /// # let _ = wallet;
+    /// ```
     pub fn new(server_url: impl Into<String>) -> Self {
         Self {
             client: Client::new(server_url),
         }
     }
 
+    /// Borrow the underlying transport client. Useful for asset-flavor
+    /// agnostic operations that aren't covered by `pay` / `insert` —
+    /// `mining_report`, `health_check`, `target`, `burn`.
     pub fn server(&self) -> &Client {
         &self.client
     }

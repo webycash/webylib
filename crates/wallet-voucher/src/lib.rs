@@ -28,12 +28,20 @@ pub struct VoucherWallet {
 }
 
 impl VoucherWallet {
+    /// Construct a new wallet pointed at a running `server-voucher`.
+    ///
+    /// ```no_run
+    /// use webylib_wallet_voucher::VoucherWallet;
+    /// let wallet = VoucherWallet::new("http://127.0.0.1:8183");
+    /// # let _ = wallet;
+    /// ```
     pub fn new(server_url: impl Into<String>) -> Self {
         Self {
             client: Client::new(server_url),
         }
     }
 
+    /// Borrow the underlying transport client.
     pub fn server(&self) -> &Client {
         &self.client
     }
