@@ -52,8 +52,10 @@ Token wire format:
     rgb21 collectible: secret:{hex64}:{contract_id}:{issuer_fp}",
 )]
 struct Cli {
-    /// Server base URL (e.g. `http://127.0.0.1:8181`). Per-flavor.
-    /// Defaults to `WEBCASH_SERVER_URL` env var if set.
+    /// Server base URL. Per-flavor; default ports in
+    /// docker-compose.local.yml are 8181 (webcash), 8182 (rgb20),
+    /// 8183 (voucher), 8184 (rgb21 collectible). Defaults to
+    /// `WEBCASH_SERVER_URL` env var if set.
     #[arg(long, env = "WEBCASH_SERVER_URL", global = true)]
     server: Option<String>,
 
