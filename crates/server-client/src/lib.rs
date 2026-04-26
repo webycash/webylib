@@ -15,6 +15,14 @@
 
 use thiserror::Error;
 
+/// Failure modes when talking to a webycash-server flavor.
+///
+/// - `Http`: server returned a non-2xx status. Body is the raw
+///   response (typically the Tornado-style HTML 500 envelope or a
+///   JSON error from the asset-gated handler).
+/// - `Transport`: TCP connect / read / write failed before a status
+///   line came back.
+/// - `Encode`: serde_json couldn't serialise the request body.
 #[derive(Debug, Error)]
 pub enum ClientError {
     #[error("HTTP error: {status}: {body}")]
@@ -25,8 +33,12 @@ pub enum ClientError {
     Encode(String),
 }
 
+/// Convenience alias used across the wallet crates for results from
+/// any `Client` method.
 pub type ClientResult<T> = Result<T, ClientError>;
 
+/// Minimal asset-agnostic HTTP client. One instance per server URL;
+/// methods correspond 1:1 to the server's endpoint set.
 #[derive(Clone, Debug)]
 pub struct Client {
     base_url: String,
