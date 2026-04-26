@@ -59,6 +59,10 @@ enum Flavor {
     /// Read-only: print the server's mining target (difficulty, ratios).
     /// Flavor-agnostic — works against any of the four binaries.
     Target,
+    /// Read-only: print the server's economy statistics
+    /// (total circulation, mining report count, current epoch,
+    /// difficulty, mining/subsidy amounts).
+    Stats,
     /// Read-only: check whether one or more public tokens are spent.
     /// Flavor-agnostic — wire format depends on the server you point at.
     Check {
@@ -175,6 +179,7 @@ fn main() -> Result<()> {
         Flavor::Rgb { cmd } => run_rgb(&server, cmd),
         Flavor::Voucher { cmd } => run_voucher(&server, cmd),
         Flavor::Target => run_target(&server),
+        Flavor::Stats => run_stats(&server),
         Flavor::Check { tokens } => run_check(&server, tokens),
         Flavor::Burn { secret } => run_burn(&server, &secret),
         Flavor::MiningReport { preimage } => run_mining_report(&server, &preimage),
@@ -234,6 +239,13 @@ fn run_mining_report(server: &str, preimage: &str) -> Result<()> {
 fn run_target(server: &str) -> Result<()> {
     let client = Client::new(server.to_string());
     let body = client.target().context("target")?;
+    println!("{body}");
+    Ok(())
+}
+
+fn run_stats(server: &str) -> Result<()> {
+    let client = Client::new(server.to_string());
+    let body = client.stats().context("stats")?;
     println!("{body}");
     Ok(())
 }
@@ -393,6 +405,13 @@ mod tests {
         let cli = Cli::try_parse_from(["webyca", "--server", "http://x", "target"])
             .expect("parse");
         assert!(matches!(cli.flavor, Flavor::Target));
+    }
+
+    #[test]
+    fn stats_subcommand_is_flavor_agnostic() {
+        let cli = Cli::try_parse_from(["webyca", "--server", "http://x", "stats"])
+            .expect("parse");
+        assert!(matches!(cli.flavor, Flavor::Stats));
     }
 
     #[test]

@@ -106,8 +106,17 @@ impl Client {
 
     /// `GET /api/v1/target` — current mining target.
     pub fn target(&self) -> ClientResult<String> {
-        let url = self.endpoint("/api/v1/target");
-        let resp = http_get(&url).map_err(|e| ClientError::Transport(e.to_string()))?;
+        self.get_raw(&self.endpoint("/api/v1/target"))
+    }
+
+    /// `GET /api/v1/stats` — economy statistics (circulation, epoch,
+    /// mining report count, current difficulty, mining/subsidy amounts).
+    pub fn stats(&self) -> ClientResult<String> {
+        self.get_raw(&self.endpoint("/api/v1/stats"))
+    }
+
+    fn get_raw(&self, url: &str) -> ClientResult<String> {
+        let resp = http_get(url).map_err(|e| ClientError::Transport(e.to_string()))?;
         let (status, body) = parse_resp(&resp);
         if !(200..300).contains(&status) {
             return Err(ClientError::Http { status, body });
