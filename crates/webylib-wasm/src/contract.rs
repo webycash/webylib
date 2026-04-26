@@ -145,6 +145,7 @@ pub(crate) fn execute_lib_inproc(
 }
 
 #[cfg(test)]
+#[allow(unexpected_cfgs)]
 mod tests {
     use super::*;
 

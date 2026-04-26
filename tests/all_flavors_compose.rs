@@ -58,13 +58,6 @@ fn images_built() -> bool {
         .all(|img| out.contains(img))
 }
 
-fn compose_path() -> std::path::PathBuf {
-    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
-    std::path::PathBuf::from(&manifest)
-        .join(COMPOSE_DIR)
-        .join(COMPOSE_FILE)
-}
-
 fn compose_dir() -> std::path::PathBuf {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
     std::path::PathBuf::from(&manifest).join(COMPOSE_DIR)

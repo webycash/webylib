@@ -130,7 +130,7 @@ fn start_stack(server_port: u16) -> Option<Stack> {
         .env("WEBCASH_BIND_ADDR", &bind)
         .env("WEBCASH_MODE", "testnet")
         .env("WEBYCASH_DIFFICULTY", "4")
-        .env("REDIS_URL", &format!("redis://127.0.0.1:{redis_port}"))
+        .env("REDIS_URL", format!("redis://127.0.0.1:{redis_port}"))
         .env("RUST_LOG", "warn")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -202,7 +202,7 @@ async fn webylib_speaks_to_server_webcash() {
     // 3. /api/v1/health_check — mined hash must be unspent.
     let secret = SecretWebcash::parse(&format!("e1.0:secret:{secret_hex}")).expect("secret");
     let public = secret.to_public();
-    let hc = client.health_check(&[public.clone()]).await.expect("hc");
+    let hc = client.health_check(std::slice::from_ref(&public)).await.expect("hc");
     assert_eq!(hc.status, "success");
     let key = format!("e1:public:{}", hex::encode(public.hash));
     let result = hc.results.get(&key).unwrap_or_else(|| {
