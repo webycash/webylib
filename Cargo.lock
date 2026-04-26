@@ -2796,6 +2796,7 @@ dependencies = [
  "clap",
  "tokio",
  "webylib-core",
+ "webylib-server-client",
  "webylib-wallet-rgb",
  "webylib-wallet-voucher",
  "webylib-wallet-webcash",

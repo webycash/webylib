@@ -17,6 +17,7 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 
+use webylib_server_client::Client;
 use webylib_wallet_rgb::RgbWallet;
 use webylib_wallet_voucher::VoucherWallet;
 use webylib_wallet_webcash::WebcashWallet;
@@ -54,6 +55,18 @@ enum Flavor {
     Voucher {
         #[command(subcommand)]
         cmd: VoucherCmd,
+    },
+    /// Read-only: print the server's mining target (difficulty, ratios).
+    /// Flavor-agnostic — works against any of the four binaries.
+    Target,
+    /// Read-only: check whether one or more public tokens are spent.
+    /// Flavor-agnostic — wire format depends on the server you point at.
+    Check {
+        /// Comma-separated public tokens, e.g.
+        /// `e1.0:public:HASH` (webcash) or
+        /// `e10.0:public:HASH:contract:fingerprint` (rgb / voucher).
+        #[arg(long, value_delimiter = ',')]
+        tokens: Vec<String>,
     },
 }
 
@@ -129,7 +142,26 @@ fn main() -> Result<()> {
         Flavor::Webcash { cmd } => run_webcash(&server, cmd),
         Flavor::Rgb { cmd } => run_rgb(&server, cmd),
         Flavor::Voucher { cmd } => run_voucher(&server, cmd),
+        Flavor::Target => run_target(&server),
+        Flavor::Check { tokens } => run_check(&server, tokens),
     }
+}
+
+fn run_target(server: &str) -> Result<()> {
+    let client = Client::new(server.to_string());
+    let body = client.target().context("target")?;
+    println!("{body}");
+    Ok(())
+}
+
+fn run_check(server: &str, tokens: Vec<String>) -> Result<()> {
+    if tokens.is_empty() {
+        anyhow::bail!("--tokens requires ≥1 public token");
+    }
+    let client = Client::new(server.to_string());
+    let body = client.health_check(&tokens).context("health_check")?;
+    println!("{body}");
+    Ok(())
 }
 
 fn run_webcash(server: &str, cmd: WebcashCmd) -> Result<()> {
@@ -270,6 +302,29 @@ mod tests {
                 | clap::error::ErrorKind::DisplayHelp
                 | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
         ));
+    }
+
+    #[test]
+    fn target_subcommand_is_flavor_agnostic() {
+        let cli = Cli::try_parse_from(["webyca", "--server", "http://x", "target"])
+            .expect("parse");
+        assert!(matches!(cli.flavor, Flavor::Target));
+    }
+
+    #[test]
+    fn check_subcommand_takes_comma_separated_tokens() {
+        let cli = Cli::try_parse_from([
+            "webyca", "--server", "http://x", "check",
+            "--tokens", "e1:public:aaa,e2:public:bbb",
+        ])
+        .expect("parse");
+        match cli.flavor {
+            Flavor::Check { tokens } => {
+                assert_eq!(tokens.len(), 2);
+                assert_eq!(tokens[0], "e1:public:aaa");
+            }
+            _ => panic!("wrong arm"),
+        }
     }
 
     #[test]
