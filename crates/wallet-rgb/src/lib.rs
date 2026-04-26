@@ -80,3 +80,24 @@ impl RgbWallet {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transfer_rejects_empty_inputs() {
+        let w = RgbWallet::new("http://no-where.invalid");
+        let token = "e1.0:secret:aaa:rgb20:fff".to_string();
+        let err = w.transfer(&[], &[token]).unwrap_err();
+        assert!(matches!(err, WalletError::Invariant(_)));
+    }
+
+    #[test]
+    fn transfer_rejects_empty_outputs() {
+        let w = RgbWallet::new("http://no-where.invalid");
+        let token = "e1.0:secret:aaa:rgb20:fff".to_string();
+        let err = w.transfer(&[token], &[]).unwrap_err();
+        assert!(matches!(err, WalletError::Invariant(_)));
+    }
+}

@@ -59,3 +59,24 @@ impl VoucherWallet {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pay_rejects_empty_inputs() {
+        let w = VoucherWallet::new("http://no-where.invalid");
+        let token = "e1.0:secret:aaa:credits:fff".to_string();
+        let err = w.pay(&[], &[token]).unwrap_err();
+        assert!(matches!(err, WalletError::Invariant(_)));
+    }
+
+    #[test]
+    fn pay_rejects_empty_outputs() {
+        let w = VoucherWallet::new("http://no-where.invalid");
+        let token = "e1.0:secret:aaa:credits:fff".to_string();
+        let err = w.pay(&[token], &[]).unwrap_err();
+        assert!(matches!(err, WalletError::Invariant(_)));
+    }
+}

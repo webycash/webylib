@@ -70,3 +70,25 @@ impl WebcashWallet {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `pay` MUST reject empty inputs before contacting the server —
+    /// otherwise an empty-input replace would slip through to the
+    /// network as malformed and waste a round-trip on a 500.
+    #[test]
+    fn pay_rejects_empty_inputs() {
+        let w = WebcashWallet::new("http://no-where.invalid");
+        let err = w.pay(&[], &["e1.0:secret:abc".into()]).unwrap_err();
+        assert!(matches!(err, WalletError::Invariant(_)));
+    }
+
+    #[test]
+    fn pay_rejects_empty_outputs() {
+        let w = WebcashWallet::new("http://no-where.invalid");
+        let err = w.pay(&["e1.0:secret:abc".into()], &[]).unwrap_err();
+        assert!(matches!(err, WalletError::Invariant(_)));
+    }
+}
