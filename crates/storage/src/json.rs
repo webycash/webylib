@@ -10,6 +10,11 @@ use std::sync::Mutex;
 use crate::mem::{MemState, MemStore};
 use crate::{Store, StoreError, StoreResult};
 
+/// `MemStore` plus persistence to a JSON file. Every mutation
+/// flushes the entire state to the configured path; reads come from
+/// the in-memory working set. Suitable for small wallets and as a
+/// transparent on-disk format. WASM consumers can build with
+/// `path = None` and manage the JSON blob via `to_json` / `from_json`.
 pub struct JsonStore {
     inner: MemStore,
     path: Mutex<Option<PathBuf>>,
@@ -54,6 +59,9 @@ impl JsonStore {
         })
     }
 
+    /// Serialise the current state to a JSON string. Useful for
+    /// WASM consumers that handle persistence externally, and as
+    /// the underlying primitive `flush` builds on.
     pub fn to_json(&self) -> StoreResult<String> {
         let snap = self.inner.snapshot();
         serde_json::to_string(&snap).map_err(|e| StoreError::Backend(format!("encode: {e}")))

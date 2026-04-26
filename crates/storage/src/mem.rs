@@ -12,6 +12,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Store, StoreError, StoreResult};
 
+/// Plain-data form of the wallet's in-memory state. Used as the
+/// JsonStore on-disk shape and as the unit-of-rollback for atomic
+/// blocks. Serialisable so JsonStore can flush and reload.
 #[derive(Default, Serialize, Deserialize)]
 pub struct MemState {
     pub meta: HashMap<String, String>,
@@ -20,6 +23,7 @@ pub struct MemState {
     pub spent_hashes: Vec<SpentHashEntry>,
 }
 
+/// One unspent (or spent — see `spent`) output kept in MemState.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UnspentEntry {
     pub secret_hash: Vec<u8>,
@@ -29,28 +33,35 @@ pub struct UnspentEntry {
     pub spent: bool,
 }
 
+/// One spent-hash audit entry. Tracks hashes that have been
+/// presented to the server as already-spent so we don't re-submit.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SpentHashEntry {
     pub hash: Vec<u8>,
     pub spent_at: String,
 }
 
+/// Pure in-memory `Store` implementation. Useful for unit tests and
+/// as the working set the `JsonStore` flushes to disk.
 #[derive(Default)]
 pub struct MemStore {
     pub(crate) state: Mutex<MemState>,
 }
 
 impl MemStore {
+    /// Empty state.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Wrap an existing MemState (e.g. one loaded from a JSON snapshot).
     pub fn from_state(state: MemState) -> Self {
         Self {
             state: Mutex::new(state),
         }
     }
 
+    /// Clone the current state out of the lock for snapshot / flush.
     pub fn snapshot(&self) -> MemState {
         let g = self.state.lock().expect("MemStore lock");
         MemState {

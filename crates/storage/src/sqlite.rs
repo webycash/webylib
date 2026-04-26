@@ -13,6 +13,10 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::{Store, StoreError, StoreResult};
 
+/// `Store` implementation backed by a single SQLite connection.
+/// File-backed (via `open`) or in-memory (via `open_in_memory`).
+/// Atomic blocks use SAVEPOINT/RELEASE so the rollback path leaves
+/// no half-applied state.
 pub struct SqliteStore {
     conn: Mutex<Connection>,
 }
