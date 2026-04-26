@@ -8,8 +8,11 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+# Renamed from `webyc` to `webyca` (asset-aware) so it doesn't clash
+# with the legacy webcash-only `webyc` binary defined in the workspace
+# root Cargo.toml. The legacy CLI will eventually be folded in here.
 [[bin]]
-name = "webyc"
+name = "webyca"
 path = "src/main.rs"
 
 [dependencies]
@@ -17,6 +20,6 @@ webylib-core = { workspace = true }
 webylib-wallet-webcash = { workspace = true }
 webylib-wallet-rgb = { workspace = true }
 webylib-wallet-voucher = { workspace = true }
-clap = { version = "4.0", features = ["derive"] }
+clap = { version = "4.0", features = ["derive", "env"] }
 tokio = { version = "1.0", features = ["full"] }
 anyhow = { workspace = true }

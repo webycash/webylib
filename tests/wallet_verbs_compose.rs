@@ -69,6 +69,21 @@ fn leading_zero_bits(hash: &[u8]) -> u32 {
         + full_zero_bytes * 8
 }
 
+/// Run-unique 64-char hex secret so re-runs against a persistent
+/// Redis don't trip the single-use-seal "token already exists" guard.
+fn unique_secret(prefix: u8) -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let mut s = format!("{prefix:02x}{nanos:032x}");
+    s.truncate(64);
+    while s.len() < 64 {
+        s.push('0');
+    }
+    s
+}
+
 fn ensure_compose() -> bool {
     if !docker_available() {
         return false;
@@ -116,17 +131,17 @@ fn webcash_pay_and_insert_via_wallet() {
 
     // 1. mine a 1.0 webcash secret directly via the client (mining_report
     //    isn't covered by `pay`; the wallet imports outputs after mining).
-    let secret = "0a".repeat(32);
+    let secret = unique_secret(0x0a);
+    let subsidy = unique_secret(0x0b);
     let template = format!(
-        r#"{{"webcash":["e1.0:secret:{secret}"],"subsidy":["e0.5:secret:{}"],"timestamp":1714003200,"difficulty":4,"nonce":__N__}}"#,
-        "0b".repeat(32)
+        r#"{{"webcash":["e1.0:secret:{secret}"],"subsidy":["e0.5:secret:{subsidy}"],"timestamp":1714003200,"difficulty":4,"nonce":__N__}}"#
     );
     let preimage = find_pow(&template, 4);
     wallet.server().mining_report(&preimage).expect("mine");
 
     // 2. webyc webcash pay: split 1.0 → 0.4 (recipient) + 0.6 (change)
-    let recipient = "01".repeat(32);
-    let change = "02".repeat(32);
+    let recipient = unique_secret(0x01);
+    let change = unique_secret(0x02);
     wallet
         .pay(
             &[format!("e1.0:secret:{secret}")],
@@ -140,7 +155,7 @@ fn webcash_pay_and_insert_via_wallet() {
     // 3. webyc webcash insert: simulate Bob receiving Alice's secret +
     //    rotating to his own. Use the change as the "received" secret
     //    for this self-test.
-    let bob_secret = "03".repeat(32);
+    let bob_secret = unique_secret(0x03);
     wallet
         .insert(&format!("e0.6:secret:{change}"), &format!("e0.6:secret:{bob_secret}"))
         .expect("insert");
@@ -167,7 +182,7 @@ fn rgb_transfer_and_insert_via_wallet() {
 
     let issuer = "aabbccddeeff00112233445566778899aabbccdd";
     let contract = "rgb20-test-2";
-    let secret = "ee".repeat(32);
+    let secret = unique_secret(0xee);
 
     // mine the seed token
     let template = format!(
@@ -177,8 +192,8 @@ fn rgb_transfer_and_insert_via_wallet() {
     wallet.server().mining_report(&preimage).expect("mine");
 
     // webyc rgb transfer: 50.0 → 20 to recipient + 30 change
-    let recipient_secret = "ab".repeat(32);
-    let change_secret = "cd".repeat(32);
+    let recipient_secret = unique_secret(0xab);
+    let change_secret = unique_secret(0xcd);
     wallet
         .transfer(
             &[format!("e50.0:secret:{secret}:{contract}:{issuer}")],
@@ -190,7 +205,7 @@ fn rgb_transfer_and_insert_via_wallet() {
         .expect("transfer");
 
     // webyc rgb insert: rotate the recipient secret to a Bob-owned one.
-    let bob_secret = "12".repeat(32);
+    let bob_secret = unique_secret(0x12);
     wallet
         .insert(
             &format!("e20.0:secret:{recipient_secret}:{contract}:{issuer}"),
@@ -208,7 +223,7 @@ fn voucher_pay_and_insert_via_wallet() {
 
     let issuer = "aabbccddeeff00112233445566778899aabbccdd";
     let contract = "credits-test-2";
-    let secret = "f1".repeat(32);
+    let secret = unique_secret(0xf1);
 
     let template = format!(
         r#"{{"webcash":["e25.0:secret:{secret}:{contract}:{issuer}"],"subsidy":[],"timestamp":1714003200,"difficulty":4,"nonce":__N__}}"#
@@ -216,8 +231,8 @@ fn voucher_pay_and_insert_via_wallet() {
     let preimage = find_pow(&template, 4);
     wallet.server().mining_report(&preimage).expect("mine");
 
-    let recipient = "f2".repeat(32);
-    let change = "f3".repeat(32);
+    let recipient = unique_secret(0xf2);
+    let change = unique_secret(0xf3);
     wallet
         .pay(
             &[format!("e25.0:secret:{secret}:{contract}:{issuer}")],
@@ -228,7 +243,7 @@ fn voucher_pay_and_insert_via_wallet() {
         )
         .expect("pay");
 
-    let bob = "f4".repeat(32);
+    let bob = unique_secret(0xf4);
     wallet
         .insert(
             &format!("e10.0:secret:{recipient}:{contract}:{issuer}"),
