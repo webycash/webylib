@@ -195,3 +195,70 @@ fn parse_resp(raw: &str) -> (u16, String) {
     let body_start = raw.find("\r\n\r\n").map(|i| i + 4).unwrap_or(raw.len());
     (status, raw[body_start..].to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn endpoint_drops_trailing_slash_from_base() {
+        let c1 = Client::new("http://x:1");
+        let c2 = Client::new("http://x:1/");
+        // Same path appended in both shapes.
+        assert_eq!(
+            c1.endpoint("/api/v1/replace"),
+            "http://x:1/api/v1/replace"
+        );
+        assert_eq!(
+            c2.endpoint("/api/v1/replace"),
+            "http://x:1/api/v1/replace"
+        );
+    }
+
+    #[test]
+    fn endpoint_accepts_https_base() {
+        let c = Client::new("https://webcash.org");
+        assert_eq!(c.endpoint("/api/v1/target"), "https://webcash.org/api/v1/target");
+    }
+
+    #[test]
+    fn parse_resp_extracts_status_and_body() {
+        let raw = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"ok\":true}";
+        let (status, body) = parse_resp(raw);
+        assert_eq!(status, 200);
+        assert_eq!(body, "{\"ok\":true}");
+    }
+
+    #[test]
+    fn parse_resp_handles_500() {
+        let raw = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\n\r\nboom";
+        let (status, body) = parse_resp(raw);
+        assert_eq!(status, 500);
+        assert_eq!(body, "boom");
+    }
+
+    #[test]
+    fn parse_resp_unknown_status_yields_zero() {
+        let raw = "garbage\r\n\r\nbody";
+        let (status, _body) = parse_resp(raw);
+        assert_eq!(status, 0);
+    }
+
+    #[test]
+    fn parse_resp_no_blank_line_returns_empty_body() {
+        let raw = "HTTP/1.1 204 No Content\r\nServer: x\r\n";
+        let (status, body) = parse_resp(raw);
+        // No `\r\n\r\n` separator → body offset lands at raw.len() → empty.
+        assert_eq!(status, 204);
+        assert_eq!(body, "");
+    }
+
+    #[test]
+    fn replace_fails_with_transport_error_on_unreachable_url() {
+        let c = Client::new("http://127.0.0.1:1"); // port 1 is reserved/closed
+        let err = c
+            .replace(&["a".into()], &["b".into()])
+            .expect_err("must fail to connect");
+        assert!(matches!(err, ClientError::Transport(_)), "got {err:?}");
+    }
+}
