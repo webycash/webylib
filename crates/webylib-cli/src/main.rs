@@ -28,7 +28,28 @@ use webylib_wallet_webcash::WebcashWallet;
     name = "webyca",
     version,
     about = "Webycash multi-asset wallet CLI",
-    long_about = None,
+    long_about = "Webycash multi-asset wallet CLI.
+
+Drives the four asset-gated server flavors (webcash, rgb fungible,
+rgb collectible, voucher) from a single binary. Every write verb
+maps to the server's single /api/v1/replace endpoint; semantics
+differ only in how the wallet shapes its inputs and outputs.
+
+Quick start (against the docker-compose.local.yml stack):
+
+    webyca --server http://127.0.0.1:8181 target
+    webyca --server http://127.0.0.1:8181 stats
+    webyca --server http://127.0.0.1:8181 webcash pay \\
+        --inputs e1.0:secret:HEX1 \\
+        --outputs e0.6:secret:HEX2,e0.4:secret:HEX3
+    webyca derive-public --secret e1.0:secret:HEX1
+    webyca completions bash > ~/.local/share/bash-completion/completions/webyca
+
+Token wire format:
+
+    webcash:           e{amount}:secret:{hex64}
+    rgb20 / voucher:   e{amount}:secret:{hex64}:{contract_id}:{issuer_fp}
+    rgb21 collectible: secret:{hex64}:{contract_id}:{issuer_fp}",
 )]
 struct Cli {
     /// Server base URL (e.g. `http://127.0.0.1:8181`). Per-flavor.
