@@ -176,3 +176,110 @@ fn run_voucher(server: &str, cmd: VoucherCmd) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    /// Catches breakage in derive proc-macros, conflicting flags, or
+    /// option name collisions across subcommands.
+    #[test]
+    fn cli_definition_is_internally_consistent() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn webcash_pay_parses_comma_separated_lists() {
+        let cli = Cli::try_parse_from([
+            "webyca",
+            "--server", "http://x:8080",
+            "webcash", "pay",
+            "--inputs", "e1.0:secret:aaa,e2.0:secret:bbb",
+            "--outputs", "e0.5:secret:ccc,e2.5:secret:ddd",
+        ])
+        .expect("parse");
+        match cli.flavor {
+            Flavor::Webcash {
+                cmd: WebcashCmd::Pay { inputs, outputs },
+            } => {
+                assert_eq!(inputs.len(), 2);
+                assert_eq!(outputs.len(), 2);
+                assert_eq!(inputs[0], "e1.0:secret:aaa");
+                assert_eq!(outputs[1], "e2.5:secret:ddd");
+            }
+            other => panic!("wrong arm: {:?}", other),
+        }
+        assert_eq!(cli.server.as_deref(), Some("http://x:8080"));
+    }
+
+    #[test]
+    fn rgb_transfer_namespaced_token_format() {
+        let token = "e10.0:secret:aaa:rgb20:fffeeeddd";
+        let cli = Cli::try_parse_from([
+            "webyca", "--server", "http://x", "rgb", "transfer",
+            "--inputs", token,
+            "--outputs", &format!("{token},e0.0:secret:zzz:rgb20:fffeeeddd"),
+        ])
+        .expect("parse");
+        match cli.flavor {
+            Flavor::Rgb { cmd: RgbCmd::Transfer { inputs, outputs } } => {
+                assert_eq!(inputs, vec![token.to_string()]);
+                assert_eq!(outputs.len(), 2);
+            }
+            _ => panic!("wrong arm"),
+        }
+    }
+
+    #[test]
+    fn voucher_insert_pair() {
+        let cli = Cli::try_parse_from([
+            "webyca", "--server", "http://x", "voucher", "insert",
+            "--received", "e10:secret:r:c:f",
+            "--rotate-to", "e10:secret:n:c:f",
+        ])
+        .expect("parse");
+        match cli.flavor {
+            Flavor::Voucher { cmd: VoucherCmd::Insert { received, rotate_to } } => {
+                assert_eq!(received, "e10:secret:r:c:f");
+                assert_eq!(rotate_to, "e10:secret:n:c:f");
+            }
+            _ => panic!("wrong arm"),
+        }
+    }
+
+    /// Server flag is global — usable BEFORE or AFTER the subcommand.
+    #[test]
+    fn server_flag_works_after_subcommand() {
+        let cli = Cli::try_parse_from([
+            "webyca", "webcash", "pay",
+            "--server", "http://post:8080",
+            "--inputs", "x", "--outputs", "y",
+        ])
+        .expect("parse");
+        assert_eq!(cli.server.as_deref(), Some("http://post:8080"));
+    }
+
+    #[test]
+    fn missing_subcommand_is_an_error() {
+        let err = Cli::try_parse_from(["webyca"]).expect_err("must require subcommand");
+        // clap reports a "missing subcommand" / "MissingRequiredArgument"-shaped error.
+        assert!(matches!(
+            err.kind(),
+            clap::error::ErrorKind::MissingSubcommand
+                | clap::error::ErrorKind::DisplayHelp
+                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+        ));
+    }
+
+    #[test]
+    fn unknown_flavor_is_rejected() {
+        let err = Cli::try_parse_from(["webyca", "ethereum", "pay"])
+            .expect_err("unknown flavor must reject");
+        assert!(matches!(
+            err.kind(),
+            clap::error::ErrorKind::InvalidSubcommand
+                | clap::error::ErrorKind::UnknownArgument
+        ));
+    }
+}
