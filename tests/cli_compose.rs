@@ -260,3 +260,111 @@ fn webyc_voucher_pay_then_insert() {
         .expect("spawn webyc");
     assert!(status.success(), "webyc voucher insert exited non-zero");
 }
+
+/// `webyca target` returns 0 and prints the server's mining target JSON
+/// for every flavor. Read-only; no state mutation.
+#[test]
+fn webyc_target_against_every_flavor() {
+    if !ensure_compose() {
+        return;
+    }
+    let webyc = webyc_path();
+    if !webyc.exists() {
+        return;
+    }
+    for port in [PORT_WEBCASH, PORT_RGB_FUNGIBLE, PORT_VOUCHER] {
+        let url = format!("http://127.0.0.1:{port}");
+        let out = Command::new(&webyc)
+            .args(["--server", &url, "target"])
+            .output()
+            .expect("spawn webyc target");
+        assert!(
+            out.status.success(),
+            "[port {port}] target failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("difficulty_target_bits") && stdout.contains("mining_amount"),
+            "[port {port}] unexpected stdout: {stdout}"
+        );
+    }
+}
+
+/// `webyca check` prints the server's health_check JSON for an
+/// unknown public token (`spent: null`). Exercises the verb against
+/// the webcash flavor.
+#[test]
+fn webyc_check_against_webcash_unknown_token() {
+    if !ensure_compose() {
+        return;
+    }
+    let webyc = webyc_path();
+    if !webyc.exists() {
+        return;
+    }
+    let url = format!("http://127.0.0.1:{PORT_WEBCASH}");
+    let novel_hash = sha256_hex(&run_unique_secret(0x60));
+    let out = Command::new(&webyc)
+        .args([
+            "--server", &url,
+            "check", "--tokens", &format!("e1.0:public:{novel_hash}"),
+        ])
+        .output()
+        .expect("spawn webyc check");
+    assert!(out.status.success(), "check failed: {}", String::from_utf8_lossy(&out.stderr));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains(r#""spent": null"#),
+        "expected unknown token; got: {stdout}"
+    );
+}
+
+/// `webyca burn` permanently destroys a freshly-mined webcash secret.
+/// Verifies the server transitions the public hash to `spent: true`.
+#[test]
+fn webyc_burn_consumes_a_mined_secret() {
+    if !ensure_compose() {
+        return;
+    }
+    let webyc = webyc_path();
+    if !webyc.exists() {
+        return;
+    }
+    let url = format!("http://127.0.0.1:{PORT_WEBCASH}");
+    let wallet = WebcashWallet::new(url.clone());
+
+    // Mine a fresh 1.0 webcash so we have something to burn.
+    let secret = run_unique_secret(0x70);
+    let subsidy = run_unique_secret(0x71);
+    let template = format!(
+        r#"{{"webcash":["e1.0:secret:{secret}"],"subsidy":["e0.5:secret:{subsidy}"],"timestamp":1714003200,"difficulty":4,"nonce":__N__}}"#
+    );
+    let preimage = find_pow(&template, 4);
+    wallet.server().mining_report(&preimage).expect("mine");
+
+    // webyca burn the secret.
+    let out = Command::new(&webyc)
+        .args([
+            "--server", &url,
+            "burn", "--secret", &format!("e1.0:secret:{secret}"),
+        ])
+        .output()
+        .expect("spawn webyc burn");
+    assert!(
+        out.status.success(),
+        "burn failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // The hash must now be marked spent.
+    let h = sha256_hex(&secret);
+    let body = wallet
+        .server()
+        .health_check(&[format!("e1.0:public:{h}")])
+        .expect("hc");
+    assert!(
+        body.contains(r#""spent": true"#),
+        "burn didn't mark spent: {body}"
+    );
+}
