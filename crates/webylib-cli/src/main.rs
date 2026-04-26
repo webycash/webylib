@@ -100,6 +100,16 @@ enum Flavor {
         #[arg(long)]
         secret: String,
     },
+    /// Local-only: verify that a `secret` token derives the given
+    /// `public` token. Exits 0 on match, 2 on mismatch. Catches
+    /// hash-mismatch / namespace-drift mistakes BEFORE submitting
+    /// to a server.
+    Verify {
+        #[arg(long)]
+        secret: String,
+        #[arg(long)]
+        public: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -169,9 +179,11 @@ fn require_server(cli: &Cli) -> Result<&str> {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    // DerivePublic is local-only; the server URL is not required.
-    if let Flavor::DerivePublic { secret } = &cli.flavor {
-        return run_derive_public(secret);
+    // Local-only verbs don't require --server.
+    match &cli.flavor {
+        Flavor::DerivePublic { secret } => return run_derive_public(secret),
+        Flavor::Verify { secret, public } => return run_verify(secret, public),
+        _ => {}
     }
     let server = require_server(&cli)?.to_string();
     match cli.flavor {
@@ -183,7 +195,7 @@ fn main() -> Result<()> {
         Flavor::Check { tokens } => run_check(&server, tokens),
         Flavor::Burn { secret } => run_burn(&server, &secret),
         Flavor::MiningReport { preimage } => run_mining_report(&server, &preimage),
-        Flavor::DerivePublic { .. } => unreachable!("handled above"),
+        Flavor::DerivePublic { .. } | Flavor::Verify { .. } => unreachable!("handled above"),
     }
 }
 
@@ -192,7 +204,7 @@ fn main() -> Result<()> {
 /// (`:contract:fp`). Handles both forms:
 ///   - `e{amt}:secret:HEX[:contract:fp]` (webcash, RGB20, voucher)
 ///   - `secret:HEX[:contract:fp]` (RGB21 collectible)
-fn run_derive_public(secret: &str) -> Result<()> {
+fn derive_public_form(secret: &str) -> Result<String> {
     use sha2::{Digest, Sha256};
 
     // The `secret:` marker is either at the very start or preceded by
@@ -212,14 +224,29 @@ fn run_derive_public(secret: &str) -> Result<()> {
         None => (after_marker, ""),
     };
     if hex_seg.len() != 64 || !hex_seg.chars().all(|c| c.is_ascii_hexdigit()) {
-        anyhow::bail!(
-            "expected 64 hex chars after `secret:`, got {hex_seg:?}"
-        );
+        anyhow::bail!("expected 64 hex chars after `secret:`, got {hex_seg:?}");
     }
 
     let public_hash = hex::encode(Sha256::digest(hex_seg.as_bytes()));
-    println!("{prefix}public:{public_hash}{tail}");
+    Ok(format!("{prefix}public:{public_hash}{tail}"))
+}
+
+fn run_derive_public(secret: &str) -> Result<()> {
+    println!("{}", derive_public_form(secret)?);
     Ok(())
+}
+
+/// Compare the secret's derived public form to the user-supplied one.
+/// Exits 0 on byte-exact match, 2 on mismatch (so scripts can branch).
+fn run_verify(secret: &str, public: &str) -> Result<()> {
+    let derived = derive_public_form(secret).context("derive from secret")?;
+    if derived == public {
+        println!("ok: secret matches public");
+        Ok(())
+    } else {
+        eprintln!("mismatch:\n  derived: {derived}\n  expected: {public}");
+        std::process::exit(2);
+    }
 }
 
 fn run_burn(server: &str, secret: &str) -> Result<()> {
@@ -469,6 +496,71 @@ mod tests {
             _ => panic!("wrong arm"),
         }
         assert!(cli.server.is_none(), "no --server required");
+    }
+
+    #[test]
+    fn verify_does_not_require_server() {
+        let cli = Cli::try_parse_from([
+            "webyca", "verify",
+            "--secret", "e1.0:secret:abc",
+            "--public", "e1.0:public:def",
+        ])
+        .expect("parse");
+        match cli.flavor {
+            Flavor::Verify { secret, public } => {
+                assert_eq!(secret, "e1.0:secret:abc");
+                assert_eq!(public, "e1.0:public:def");
+            }
+            _ => panic!("wrong arm"),
+        }
+        assert!(cli.server.is_none(), "no --server required");
+    }
+
+    #[test]
+    fn derive_public_form_webcash_matches_sha256() {
+        use sha2::{Digest, Sha256};
+        let secret = "a".repeat(64);
+        let token = format!("e1.0:secret:{secret}");
+        let derived = derive_public_form(&token).unwrap();
+        let expected = format!(
+            "e1.0:public:{}",
+            hex::encode(Sha256::digest(secret.as_bytes()))
+        );
+        assert_eq!(derived, expected);
+    }
+
+    #[test]
+    fn derive_public_form_rgb_namespaced_preserves_namespace() {
+        let token = format!(
+            "e10.0:secret:{}:rgb20-usdc:aabbccddeeff00112233445566778899aabbccdd",
+            "b".repeat(64),
+        );
+        let derived = derive_public_form(&token).unwrap();
+        assert!(derived.starts_with("e10.0:public:"));
+        assert!(derived.ends_with(":rgb20-usdc:aabbccddeeff00112233445566778899aabbccdd"));
+    }
+
+    #[test]
+    fn derive_public_form_collectible_no_amount_segment() {
+        let token = format!(
+            "secret:{}:rgb21-art:aabbccddeeff00112233445566778899aabbccdd",
+            "c".repeat(64),
+        );
+        let derived = derive_public_form(&token).unwrap();
+        assert!(derived.starts_with("public:"));
+        assert!(!derived.starts_with("e"));
+    }
+
+    #[test]
+    fn derive_public_form_rejects_no_secret_marker() {
+        let err = derive_public_form("e1.0:public:abc").unwrap_err();
+        assert!(err.to_string().contains("missing `secret:` segment"));
+    }
+
+    #[test]
+    fn derive_public_form_rejects_short_hex() {
+        let err = derive_public_form("e1.0:secret:short").unwrap_err();
+        assert!(err.to_string().contains("64 hex chars"));
     }
 
     #[test]
