@@ -1,4 +1,8 @@
 //! Webcash CLI - Command Line Interface for Webcash Wallet
+//!
+//! Webcash-only. For RGB / Voucher operations and a unified verb
+//! surface across all four asset flavors, build the `webyca` binary
+//! from `crates/webylib-cli` (`cargo build -p webylib-cli`).
 
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
@@ -14,7 +18,7 @@ enum Network {
 
 #[derive(Parser)]
 #[command(name = "webyc")]
-#[command(about = "Webcash wallet command line interface")]
+#[command(about = "Webcash wallet command line interface (webcash-only — see `webyca` for multi-asset)")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 struct Cli {
     /// Wallet database file path [default: ~/.webyc/wallet.db]
