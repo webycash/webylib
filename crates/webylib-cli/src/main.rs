@@ -15,7 +15,8 @@
 //! ```
 
 use anyhow::{anyhow, Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 
 use webylib_server_client::Client;
 use webylib_wallet_rgb::RgbWallet;
@@ -24,7 +25,7 @@ use webylib_wallet_webcash::WebcashWallet;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "webyc",
+    name = "webyca",
     version,
     about = "Webycash multi-asset wallet CLI",
     long_about = None,
@@ -110,6 +111,17 @@ enum Flavor {
         #[arg(long)]
         public: String,
     },
+    /// Print a shell completion script to stdout. Pipe into your
+    /// shell's completion path, e.g.
+    ///
+    ///   webyca completions bash > ~/.local/share/bash-completion/completions/webyca
+    ///   webyca completions zsh  > ~/.zsh/completions/_webyca
+    ///   webyca completions fish > ~/.config/fish/completions/webyca.fish
+    Completions {
+        /// Target shell.
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -183,6 +195,7 @@ fn main() -> Result<()> {
     match &cli.flavor {
         Flavor::DerivePublic { secret } => return run_derive_public(secret),
         Flavor::Verify { secret, public } => return run_verify(secret, public),
+        Flavor::Completions { shell } => return run_completions(*shell),
         _ => {}
     }
     let server = require_server(&cli)?.to_string();
@@ -195,8 +208,17 @@ fn main() -> Result<()> {
         Flavor::Check { tokens } => run_check(&server, tokens),
         Flavor::Burn { secret } => run_burn(&server, &secret),
         Flavor::MiningReport { preimage } => run_mining_report(&server, &preimage),
-        Flavor::DerivePublic { .. } | Flavor::Verify { .. } => unreachable!("handled above"),
+        Flavor::DerivePublic { .. }
+        | Flavor::Verify { .. }
+        | Flavor::Completions { .. } => unreachable!("handled above"),
     }
+}
+
+fn run_completions(shell: Shell) -> Result<()> {
+    let mut cmd = Cli::command();
+    let bin_name = cmd.get_name().to_string();
+    clap_complete::generate(shell, &mut cmd, bin_name, &mut std::io::stdout());
+    Ok(())
 }
 
 /// Local-only: replace the `secret:HEX` segment with `public:SHA256`
@@ -561,6 +583,26 @@ mod tests {
     fn derive_public_form_rejects_short_hex() {
         let err = derive_public_form("e1.0:secret:short").unwrap_err();
         assert!(err.to_string().contains("64 hex chars"));
+    }
+
+    #[test]
+    fn completions_subcommand_takes_shell_value() {
+        let cli = Cli::try_parse_from(["webyca", "completions", "bash"])
+            .expect("parse");
+        match cli.flavor {
+            Flavor::Completions { shell } => assert_eq!(shell, Shell::Bash),
+            _ => panic!("wrong arm"),
+        }
+        assert!(cli.server.is_none(), "no --server required");
+    }
+
+    #[test]
+    fn completions_supports_zsh_fish_powershell() {
+        for shell_name in ["zsh", "fish", "powershell"] {
+            let cli = Cli::try_parse_from(["webyca", "completions", shell_name])
+                .expect("parse");
+            assert!(matches!(cli.flavor, Flavor::Completions { .. }));
+        }
     }
 
     #[test]
