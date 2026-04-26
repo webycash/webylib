@@ -2794,6 +2794,8 @@ version = "0.3.12"
 dependencies = [
  "anyhow",
  "clap",
+ "hex",
+ "sha2",
  "tokio",
  "webylib-core",
  "webylib-server-client",

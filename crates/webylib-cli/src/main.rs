@@ -84,6 +84,18 @@ enum Flavor {
         #[arg(long)]
         preimage: String,
     },
+    /// Convert a secret token to its public form locally — no server
+    /// contact required. The hash is `sha256(secret_hex_bytes)` for
+    /// every flavor; namespace fields (contract, issuer fingerprint)
+    /// are preserved as-is.
+    DerivePublic {
+        /// Secret token in the asset's wire form, e.g.
+        /// `e1.0:secret:HEX64` (webcash),
+        /// `e10.0:secret:HEX64:contract:fingerprint` (rgb / voucher),
+        /// or `secret:HEX64:contract:fingerprint` (rgb collectible).
+        #[arg(long)]
+        secret: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -153,6 +165,10 @@ fn require_server(cli: &Cli) -> Result<&str> {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    // DerivePublic is local-only; the server URL is not required.
+    if let Flavor::DerivePublic { secret } = &cli.flavor {
+        return run_derive_public(secret);
+    }
     let server = require_server(&cli)?.to_string();
     match cli.flavor {
         Flavor::Webcash { cmd } => run_webcash(&server, cmd),
@@ -162,7 +178,43 @@ fn main() -> Result<()> {
         Flavor::Check { tokens } => run_check(&server, tokens),
         Flavor::Burn { secret } => run_burn(&server, &secret),
         Flavor::MiningReport { preimage } => run_mining_report(&server, &preimage),
+        Flavor::DerivePublic { .. } => unreachable!("handled above"),
     }
+}
+
+/// Local-only: replace the `secret:HEX` segment with `public:SHA256`
+/// while preserving any prefix (`e{amount}:`) and trailing namespace
+/// (`:contract:fp`). Handles both forms:
+///   - `e{amt}:secret:HEX[:contract:fp]` (webcash, RGB20, voucher)
+///   - `secret:HEX[:contract:fp]` (RGB21 collectible)
+fn run_derive_public(secret: &str) -> Result<()> {
+    use sha2::{Digest, Sha256};
+
+    // The `secret:` marker is either at the very start or preceded by
+    // `:`. Anchor accordingly.
+    let (prefix, after_marker) = if let Some(rest) = secret.strip_prefix("secret:") {
+        ("", rest)
+    } else if let Some(at) = secret.find(":secret:") {
+        let after = &secret[at + ":secret:".len()..];
+        (&secret[..at + 1], after) // prefix keeps the trailing `:` for re-emission
+    } else {
+        anyhow::bail!("token missing `secret:` segment");
+    };
+
+    // Hex segment is up to the next `:` or end of string.
+    let (hex_seg, tail) = match after_marker.find(':') {
+        Some(i) => (&after_marker[..i], &after_marker[i..]),
+        None => (after_marker, ""),
+    };
+    if hex_seg.len() != 64 || !hex_seg.chars().all(|c| c.is_ascii_hexdigit()) {
+        anyhow::bail!(
+            "expected 64 hex chars after `secret:`, got {hex_seg:?}"
+        );
+    }
+
+    let public_hash = hex::encode(Sha256::digest(hex_seg.as_bytes()));
+    println!("{prefix}public:{public_hash}{tail}");
+    Ok(())
 }
 
 fn run_burn(server: &str, secret: &str) -> Result<()> {
@@ -383,6 +435,21 @@ mod tests {
             Flavor::MiningReport { preimage } => assert!(preimage.contains("webcash")),
             _ => panic!("wrong arm"),
         }
+    }
+
+    /// `derive-public` works without --server (local-only computation).
+    #[test]
+    fn derive_public_does_not_require_server() {
+        let cli = Cli::try_parse_from([
+            "webyca", "derive-public",
+            "--secret", "e1.0:secret:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ])
+        .expect("parse");
+        match cli.flavor {
+            Flavor::DerivePublic { secret } => assert!(secret.contains(":secret:")),
+            _ => panic!("wrong arm"),
+        }
+        assert!(cli.server.is_none(), "no --server required");
     }
 
     #[test]
