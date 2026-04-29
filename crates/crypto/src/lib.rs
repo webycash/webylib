@@ -2,3 +2,6 @@
 //!
 //! Migrated from webylib `src/crypto.rs` in M2. Split per-primitive so unit
 //! tests stay focused and the WASM build pulls only what it needs.
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+

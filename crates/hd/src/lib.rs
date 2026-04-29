@@ -9,3 +9,6 @@
 //!
 //! Webcash flavor uses `legacy_webcash` exclusively; RGB and Voucher flavors
 //! use `bip32`.
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+

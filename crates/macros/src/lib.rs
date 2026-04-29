@@ -10,6 +10,9 @@
 //!   for the FFI layer. **This is the macro that replaces the legacy
 //!   22K-LOC handwritten `src/ffi/wallet_ops.rs` with one source of truth.**
 
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};

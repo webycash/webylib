@@ -9,6 +9,7 @@
 //! All operations land on the server's `/api/v1/replace`.
 
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 
 use thiserror::Error;
 use webylib_server_client::{Client, ClientError};

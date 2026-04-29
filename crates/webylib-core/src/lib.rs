@@ -6,3 +6,6 @@
 //!
 //! Snapshot, encryption, and passkey live alongside ops. Migrated from
 //! `webylib/src/wallet/{mod,operations,snapshot,encryption}.rs` in M2.
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+

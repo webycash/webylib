@@ -14,6 +14,9 @@
 //!   webyc voucher insert   → /api/v1/replace (1:1)
 //! ```
 
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+
 use anyhow::{anyhow, Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;

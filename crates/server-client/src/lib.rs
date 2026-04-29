@@ -12,6 +12,7 @@
 //! the `async` feature.
 
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 
 use thiserror::Error;
 

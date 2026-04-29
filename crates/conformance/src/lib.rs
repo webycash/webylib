@@ -9,12 +9,19 @@
 //!   `webycash-server/docker-compose.local.yml`. Exercises the full lifecycle
 //!   per flavor: mint/issue → balance → split → transfer → recover.
 
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+
+/// Local-compose port assignments for each flavor binary.
 pub mod ports {
-    /// The local-compose port for each flavor binary.
+    /// Local-compose port for the Webcash server.
     pub const SERVER_WEBCASH: u16 = 8181;
+    /// Local-compose port for the RGB server.
     pub const SERVER_RGB: u16 = 8182;
+    /// Local-compose port for the Voucher server.
     pub const SERVER_VOUCHER: u16 = 8183;
 
+    /// Build the `http://localhost:{port}` URL used by the lifecycle harness.
     pub fn url(port: u16) -> String {
         format!("http://localhost:{port}")
     }

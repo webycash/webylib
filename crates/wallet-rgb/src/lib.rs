@@ -16,6 +16,7 @@
 //! submits.
 
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 
 use thiserror::Error;
 use webylib_server_client::{Client, ClientError};
