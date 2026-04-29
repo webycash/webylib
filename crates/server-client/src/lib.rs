@@ -25,10 +25,18 @@ use thiserror::Error;
 /// - `Encode`: serde_json couldn't serialise the request body.
 #[derive(Debug, Error)]
 pub enum ClientError {
+    /// Server returned a non-2xx status. Body is the raw response.
     #[error("HTTP error: {status}: {body}")]
-    Http { status: u16, body: String },
+    Http {
+        /// HTTP status code returned by the server.
+        status: u16,
+        /// Raw response body (may be JSON or Tornado-style HTML 500).
+        body: String,
+    },
+    /// TCP connect / read / write failed before a status came back.
     #[error("transport error: {0}")]
     Transport(String),
+    /// `serde_json` couldn't serialise the request body.
     #[error("body encode error: {0}")]
     Encode(String),
 }
@@ -60,6 +68,8 @@ impl Client {
         }
     }
 
+    /// Return the base URL the client was constructed with (verbatim;
+    /// no normalisation).
     pub fn base_url(&self) -> &str {
         &self.base_url
     }

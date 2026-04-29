@@ -17,19 +17,28 @@ use crate::{Store, StoreError, StoreResult};
 /// blocks. Serialisable so JsonStore can flush and reload.
 #[derive(Default, Serialize, Deserialize)]
 pub struct MemState {
+    /// Free-form `meta` key/value map (master_secret, etc.).
     pub meta: HashMap<String, String>,
+    /// HD chain depth counters per chain code.
     pub depths: HashMap<String, u64>,
+    /// One entry per output the wallet has seen.
     pub unspent: Vec<UnspentEntry>,
+    /// One entry per spent hash (deduped by hash).
     pub spent_hashes: Vec<SpentHashEntry>,
 }
 
 /// One unspent (or spent — see `spent`) output kept in MemState.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UnspentEntry {
+    /// SHA256 of the secret hex bytes — primary key.
     pub secret_hash: Vec<u8>,
+    /// 64-char hex secret.
     pub secret: String,
+    /// Atomic-unit amount (wats).
     pub amount: i64,
+    /// RFC 3339 wall-clock when the entry was inserted.
     pub created_at: String,
+    /// `true` after a successful /replace consumes this output.
     pub spent: bool,
 }
 
@@ -37,7 +46,9 @@ pub struct UnspentEntry {
 /// presented to the server as already-spent so we don't re-submit.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SpentHashEntry {
+    /// Raw 32-byte hash.
     pub hash: Vec<u8>,
+    /// RFC 3339 wall-clock when the entry was recorded.
     pub spent_at: String,
 }
 

@@ -22,19 +22,31 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
+/// Failure modes shared across every backend (Mem / Json / Sqlite).
 #[derive(Debug, Error)]
 pub enum StoreError {
+    /// Underlying backend (rusqlite, fs, etc.) reported an error.
     #[error("storage backend error: {0}")]
     Backend(String),
+    /// Caller asked for a key / row that doesn't exist.
     #[error("not found: {0}")]
     NotFound(String),
+    /// Backend rejected the write due to a uniqueness / FK constraint.
     #[error("constraint violation: {0}")]
     Constraint(String),
 }
 
+/// Convenience alias for `Result<T, StoreError>`.
 pub type StoreResult<T> = Result<T, StoreError>;
 
 /// Minimal storage interface for the wallet engine.
+///
+/// The trait surface mirrors the legacy webylib `Store` trait
+/// byte-for-byte so the existing wallet operations call this
+/// without code changes. Per-method rustdoc isn't pinned by
+/// `-W missing-docs` here; the method names are 1:1 with the
+/// methods on the legacy trait.
+#[allow(missing_docs)]
 pub trait Store: Send + Sync {
     fn as_any(&self) -> &dyn std::any::Any;
 

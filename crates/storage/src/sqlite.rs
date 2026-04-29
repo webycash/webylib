@@ -58,6 +58,9 @@ impl SqliteStore {
     }
 }
 
+/// SQLite schema applied at `open` / `open_in_memory`. Idempotent
+/// (every CREATE uses `IF NOT EXISTS`) so re-applying on an existing
+/// database is a no-op.
 pub const SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS wallet_metadata (
     key   TEXT PRIMARY KEY,
