@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-02
+
+### Added
+- **Asset-traits refactor**: `webylib-core` + per-asset `wallet-{webcash,rgb,voucher}` crates with shared `Asset`, `KeyStrategy`, `Recover`, and `ReplaceWithHtlc` traits. Webcash legacy code lives under `webylib-hd/legacy_webcash.rs` and is reachable through the same generic `Recover` interface as the namespaced flavours.
+- **HTLC swap support**: `Client::replace_with_htlc` for RGB20 + RGB21. Three e2e tests per flavour against the docker-managed RGB servers (`tests/htlc_swap_e2e.rs`, `tests/htlc_rgb21_e2e.rs`).
+- **Recovery for all flavours**: `recover` works generically across Webcash, RGB20, RGB21, and Voucher. 8 property tests (`tests/recovery_all_flavors.rs`) + 6 compose tests (`tests/recovery_compose.rs`).
+- **Compose tests**: `all_flavors_compose.rs` exercises the full lifecycle of every flavour against a single docker compose stack.
+
+### Changed
+- `replace` is now generic over `A: Asset`; the wallet picks the wire format from the `Asset` impl. Old per-flavour `replace_*` calls remain as thin re-exports.
+- Wire format for RGB / Voucher now namespace-encodes `{contract_id}:{issuer_pgp_fp}` so a single wallet can hold material from multiple issuers without colliding.
+
 ## [0.3.12] - 2026-04-21
 
 ### Fixed

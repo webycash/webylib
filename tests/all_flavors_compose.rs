@@ -271,11 +271,15 @@ fn webcash_lifecycle() {
     )
     .unwrap();
     assert!(
-        body.contains(&format!(r#""e1:public:{public_hash}": {{"spent": true}}"#)),
+        body.contains(&format!(
+            r#""e1:public:{public_hash}": {{"spent": true, "amount": null}}"#
+        )),
         "[webcash] hc2 input: {body}"
     );
     assert!(
-        body.contains(&format!(r#""e0.4:public:{out1h}": {{"spent": false}}"#)),
+        body.contains(&format!(
+            r#""e0.4:public:{out1h}": {{"spent": false, "amount": "0.4"}}"#
+        )),
         "[webcash] hc2 out1: {body}"
     );
 
@@ -344,7 +348,7 @@ fn rgb_fungible_lifecycle() {
     .unwrap();
     assert!(
         body.contains(&format!(
-            r#""e100:public:{public_hash}:{contract}:{issuer}": {{"spent": true}}"#
+            r#""e100:public:{public_hash}:{contract}:{issuer}": {{"spent": true, "amount": null}}"#
         )),
         "[rgb20] input not spent: {body}"
     );
@@ -427,7 +431,7 @@ fn voucher_lifecycle() {
     .unwrap();
     assert!(
         body.contains(&format!(
-            r#""e10:public:{public_hash}:{contract}:{issuer}": {{"spent": true}}"#
+            r#""e10:public:{public_hash}:{contract}:{issuer}": {{"spent": true, "amount": null}}"#
         )),
         "[voucher] input not spent: {body}"
     );

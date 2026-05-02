@@ -1,14 +1,21 @@
-//! HD derivation.
+//! HD derivation for the webycash family.
 //!
-//! Two modules:
-//! - `legacy_webcash` — the existing 4-chain SHA256 scheme (Receive / Pay /
-//!   Change / Mining). FROZEN; bit-for-bit compat required.
-//! - `bip32` — BIP32/39/44 via `bitcoin::bip32`, path
-//!   `m/83696968'/0'/family'/index'`, families `rgb=1`, `voucher=6`.
-//!   Added in M4.
+//! Two derivation schemes coexist:
 //!
-//! Webcash flavor uses `legacy_webcash` exclusively; RGB and Voucher flavors
-//! use `bip32`.
+//! - [`legacy_webcash`] — the original 4-chain SHA256 scheme used by every
+//!   wallet that has ever talked to webcash.org. Wire-format frozen.
+//! - [`bip32`] — BIP32/39/44 derivation for the RGB and Voucher families.
+//!   Path: `m/83696968'/0'/family'/index'`. Lands when the BIP32 wallet
+//!   surface is first needed.
+//!
+//! [`ChainCode`] is shared between both schemes — `Receive`, `Pay`,
+//! `Change`, `Mining` — so the recovery loop walks the same four chains
+//! regardless of which derivation function turns chain+depth into a
+//! 32-byte secret.
+
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod legacy_webcash;
+
+pub use legacy_webcash::{ChainCode, HdWallet};

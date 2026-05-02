@@ -15,7 +15,54 @@
 #![warn(missing_docs)]
 
 use thiserror::Error;
+use webylib_core::WalletAsset;
 use webylib_server_client::{Client, ClientError};
+
+/// Zero-sized asset marker for `WalletAsset` impls. Use to parameterise
+/// asset-generic wallet ops over the Webcash flavor:
+///
+/// ```no_run
+/// use webylib_core::recover;
+/// use webylib_hd::HdWallet;
+/// use webylib_server_client::Client;
+/// use webylib_wallet_webcash::Webcash;
+///
+/// let client = Client::new("http://127.0.0.1:8181");
+/// let hd = HdWallet::from_master_secret([0u8; 32]);
+/// let report = recover::<Webcash>(&client, &hd, &(), 5, &Default::default());
+/// # let _ = report;
+/// ```
+#[derive(Debug)]
+pub struct Webcash;
+
+impl WalletAsset for Webcash {
+    const NAME: &'static str = "webcash";
+    type Namespace = ();
+
+    /// `e1:public:{sha256(secret_hex)}` — the legacy webcash wire shape.
+    /// Production normalises any decimal amount in the request to `e1`
+    /// when it echoes the result key, so we send `e1` straight away to
+    /// avoid an avoidable string transform on response matching.
+    fn public_token_for_lookup(secret_hex: &str, _ns: &()) -> String {
+        use sha2::{Digest, Sha256};
+        let hash = hex::encode(Sha256::digest(secret_hex.as_bytes()));
+        format!("e1:public:{hash}")
+    }
+
+    /// Webcash response keys are `"e{amt}:public:{hash}"`. Hash is at
+    /// index 2 after splitting on `':'`.
+    fn extract_hash_from_response_key(key: &str) -> Option<&str> {
+        let mut parts = key.splitn(3, ':');
+        let _amt = parts.next()?;
+        let _public = parts.next()?;
+        let hash = parts.next()?;
+        if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+            Some(hash)
+        } else {
+            None
+        }
+    }
+}
 
 /// Failure modes from the wallet's verb methods.
 #[derive(Debug, Error)]
@@ -113,5 +160,28 @@ mod tests {
         let w = WebcashWallet::new("http://no-where.invalid");
         let err = w.pay(&["e1.0:secret:abc".into()], &[]).unwrap_err();
         assert!(matches!(err, WalletError::Invariant(_)));
+    }
+
+    #[test]
+    fn wallet_asset_token_format_matches_legacy() {
+        // Pin the wire shape: `e1:public:{sha256(secret_hex)}`. The
+        // server normalises any amount to `e1`, so we send that.
+        let secret = "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234";
+        let token = Webcash::public_token_for_lookup(secret, &());
+        let prefix = "e1:public:";
+        assert!(token.starts_with(prefix), "got {token}");
+        let hash = &token[prefix.len()..];
+        assert_eq!(hash.len(), 64);
+    }
+
+    #[test]
+    fn wallet_asset_extract_hash_round_trip() {
+        let key = "e1:public:fbe98164f16e9af34434388e9ac8e9efa286188dedd0f7218e1d9a578b7c3f73";
+        assert_eq!(
+            Webcash::extract_hash_from_response_key(key),
+            Some("fbe98164f16e9af34434388e9ac8e9efa286188dedd0f7218e1d9a578b7c3f73")
+        );
+        assert_eq!(Webcash::extract_hash_from_response_key("garbage"), None);
+        assert_eq!(Webcash::extract_hash_from_response_key("e1:public:short"), None);
     }
 }

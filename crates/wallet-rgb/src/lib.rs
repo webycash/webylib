@@ -19,7 +19,83 @@
 #![warn(missing_docs)]
 
 use thiserror::Error;
+use webylib_core::{IssuedNamespace, WalletAsset};
 use webylib_server_client::{Client, ClientError};
+
+/// Zero-sized asset marker for the RGB20 fungible flavor. Wire format:
+/// `e{amt}:public:{hash}:{contract_id}:{issuer_fp}`. Splittable.
+#[derive(Debug)]
+pub struct RgbFungible;
+
+/// Zero-sized asset marker for the RGB21 collectible (NFT) flavor.
+/// Wire format: `public:{hash}:{contract_id}:{issuer_fp}` — no amount
+/// segment because each token is unique 1:1.
+#[derive(Debug)]
+pub struct RgbCollectible;
+
+impl WalletAsset for RgbFungible {
+    const NAME: &'static str = "rgb-fungible";
+    type Namespace = IssuedNamespace;
+
+    fn public_token_for_lookup(secret_hex: &str, ns: &IssuedNamespace) -> String {
+        use sha2::{Digest, Sha256};
+        let hash = hex::encode(Sha256::digest(secret_hex.as_bytes()));
+        format!(
+            "e1:public:{hash}:{contract}:{issuer}",
+            contract = ns.contract_id,
+            issuer = ns.issuer_fp,
+        )
+    }
+
+    /// RGB20 keys: `e{amt}:public:{hash}:{contract_id}:{issuer_fp}`.
+    /// Hash is at index 2 after splitting on `':'`.
+    fn extract_hash_from_response_key(key: &str) -> Option<&str> {
+        let mut parts = key.splitn(5, ':');
+        let _amt = parts.next()?;
+        let _public = parts.next()?;
+        let hash = parts.next()?;
+        let _contract = parts.next()?;
+        let _issuer = parts.next()?;
+        if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+            Some(hash)
+        } else {
+            None
+        }
+    }
+}
+
+impl WalletAsset for RgbCollectible {
+    const NAME: &'static str = "rgb-collectible";
+    type Namespace = IssuedNamespace;
+    /// RGB21 NFTs carry no amount: the collectible `/health_check`
+    /// handler returns `{"spent": ...}` with no `amount` field.
+    const SERVER_REPORTS_AMOUNT: bool = false;
+
+    fn public_token_for_lookup(secret_hex: &str, ns: &IssuedNamespace) -> String {
+        use sha2::{Digest, Sha256};
+        let hash = hex::encode(Sha256::digest(secret_hex.as_bytes()));
+        format!(
+            "public:{hash}:{contract}:{issuer}",
+            contract = ns.contract_id,
+            issuer = ns.issuer_fp,
+        )
+    }
+
+    /// RGB21 keys: `public:{hash}:{contract_id}:{issuer_fp}` — no
+    /// amount segment, hash sits at index 1.
+    fn extract_hash_from_response_key(key: &str) -> Option<&str> {
+        let mut parts = key.splitn(4, ':');
+        let _public = parts.next()?;
+        let hash = parts.next()?;
+        let _contract = parts.next()?;
+        let _issuer = parts.next()?;
+        if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+            Some(hash)
+        } else {
+            None
+        }
+    }
+}
 
 /// Failure modes from the wallet's verb methods.
 #[derive(Debug, Error)]
@@ -123,5 +199,50 @@ mod tests {
         let token = "e1.0:secret:aaa:rgb20:fff".to_string();
         let err = w.transfer(&[token], &[]).unwrap_err();
         assert!(matches!(err, WalletError::Invariant(_)));
+    }
+
+    #[test]
+    fn rgb20_token_format_includes_namespace() {
+        let ns = IssuedNamespace::new("rgb20-usdc", "AABBCCDDEEFF00112233445566778899AABBCCDD");
+        let token = RgbFungible::public_token_for_lookup(&"a".repeat(64), &ns);
+        assert!(token.starts_with("e1:public:"));
+        assert!(token.ends_with(":rgb20-usdc:aabbccddeeff00112233445566778899aabbccdd"),
+            "issuer fp lower-cased per protocol freeze, got {token}");
+    }
+
+    #[test]
+    fn rgb21_token_format_drops_amount_segment() {
+        let ns = IssuedNamespace::new("rgb21-tickets", "1".repeat(40));
+        let token = RgbCollectible::public_token_for_lookup(&"b".repeat(64), &ns);
+        assert!(token.starts_with("public:"), "rgb21 has no amount segment, got {token}");
+    }
+
+    #[test]
+    fn rgb20_extract_hash_round_trip() {
+        let key = "e25:public:a0fab1377f49a759b57f63318262ebe89fabfc990e8e93ceac2984561482b9d4:rgb20-usdc:aabb";
+        assert_eq!(
+            RgbFungible::extract_hash_from_response_key(key),
+            Some("a0fab1377f49a759b57f63318262ebe89fabfc990e8e93ceac2984561482b9d4")
+        );
+    }
+
+    #[test]
+    fn rgb21_extract_hash_round_trip() {
+        let key = "public:fbe98164f16e9af34434388e9ac8e9efa286188dedd0f7218e1d9a578b7c3f73:nft-set:1234";
+        assert_eq!(
+            RgbCollectible::extract_hash_from_response_key(key),
+            Some("fbe98164f16e9af34434388e9ac8e9efa286188dedd0f7218e1d9a578b7c3f73")
+        );
+    }
+
+    /// The two flavors live behind distinct WalletAsset impls so the
+    /// type system catches a `recover::<RgbFungible>` accidentally
+    /// being pointed at an RGB21 server (or vice versa) at compile
+    /// time. Smoke check: trait object shapes don't collide.
+    #[test]
+    fn rgb_fungible_and_collectible_are_distinct_types() {
+        fn _expects_namespace<A: WalletAsset<Namespace = IssuedNamespace>>() {}
+        _expects_namespace::<RgbFungible>();
+        _expects_namespace::<RgbCollectible>();
     }
 }

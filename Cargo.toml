@@ -23,7 +23,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.12"
+version = "0.4.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT"
@@ -56,7 +56,7 @@ proptest = "1"
 
 [package]
 name = "webylib"
-version = "0.3.12"
+version = "0.4.0"
 edition = "2021"
 rust-version = "1.85"
 description = "Webcash HD wallet library — bearer e-cash with BIP32-style key derivation, SQLite storage, AES-256-GCM encryption, and full C FFI for cross-platform SDKs"
@@ -121,6 +121,14 @@ rusqlite = { version = "0.37.0", features = ["bundled"], optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json"], optional = true }
 keyring = { version = "3", features = ["apple-native", "linux-native", "windows-native"], optional = true }
 
+# Asset-generic recovery / wallet ops live in these crates. The legacy
+# webylib::Wallet now delegates to them so there's a single recovery
+# implementation shared with wallet-{webcash,rgb,voucher}.
+webylib-core = { workspace = true }
+webylib-hd = { workspace = true }
+webylib-server-client = { workspace = true }
+webylib-wallet-webcash = { workspace = true }
+
 # WASM (optional)
 web-sys = { version = "0.3", features = ["DomStringList", "Event", "EventTarget", "IdbDatabase", "IdbFactory", "IdbObjectStore", "IdbOpenDbRequest", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbVersionChangeEvent", "Window"], optional = true }
 js-sys = { version = "0.3", optional = true }
@@ -138,6 +146,8 @@ tempfile = "3.0"
 mockito = "1.7.0"
 ed25519-dalek = "2"
 serde_json = "1"
+webylib-core = { workspace = true }
+webylib-hd = { workspace = true }
 webylib-wallet-webcash = { workspace = true }
 webylib-wallet-rgb = { workspace = true }
 webylib-wallet-voucher = { workspace = true }

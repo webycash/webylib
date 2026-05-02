@@ -14,7 +14,81 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HTLC types — mirrored exactly from `webycash-asset-rgb::htlc` so the wallet
+// can construct request bodies the RGB server will accept without depending
+// on the server crate. Keep in lockstep — wire format is the contract.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Wallet-side counterpart to `webycash-asset-rgb::htlc::LockRequest`.
+/// Carries a *delta* from server-now (never an absolute timestamp) — see
+/// `docs/referee-zkp-based-swap.md` §8.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HtlcLockRequest {
+    /// Hex of `sha256(X)` for the agreed preimage.
+    pub committed_h_hex: String,
+    /// Seconds from server-now until refund unlocks. Server stamps
+    /// `refund_after_unix = server_now + this`.
+    pub refund_after_seconds_from_now: u64,
+    /// Recipient secret hex (the future claim-path owner).
+    pub claim_owner_secret_hex: String,
+    /// Sender refund secret hex (the refund-path owner).
+    pub refund_owner_secret_hex: String,
+}
+
+/// Wallet-side counterpart to `webycash-asset-rgb::htlc::HtlcWitness`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HtlcWitness {
+    /// Hex preimage when taking the claim path; `None` for refund.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provided_x_hex: Option<String>,
+    /// Hex of `sha256(output_secret_hex_ascii)`. The server cross-checks
+    /// this against the actual output's hash.
+    pub output_owner_hash_hex: String,
+}
+
+impl HtlcWitness {
+    /// Convenience: build the claim-path witness given the preimage and
+    /// the output secret. Computes the output owner hash.
+    pub fn claim(provided_x_hex: impl Into<String>, output_secret_hex: &str) -> Self {
+        Self {
+            provided_x_hex: Some(provided_x_hex.into()),
+            output_owner_hash_hex: hex::encode(Sha256::digest(output_secret_hex.as_bytes())),
+        }
+    }
+
+    /// Convenience: build the refund-path witness.
+    pub fn refund(output_secret_hex: &str) -> Self {
+        Self {
+            provided_x_hex: None,
+            output_owner_hash_hex: hex::encode(Sha256::digest(output_secret_hex.as_bytes())),
+        }
+    }
+}
+
+/// One entry in the `htlc_locks` array — pair an output index with the
+/// lock parameters the server should stamp.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HtlcLockEntry {
+    /// Index into `new_webcashes` of the output to lock.
+    pub output_index: usize,
+    /// The lock parameters the server stamps.
+    pub request: HtlcLockRequest,
+}
+
+/// One entry in the `htlc_witnesses` array — pair an input index with
+/// its claim-or-refund witness.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HtlcWitnessEntry {
+    /// Index into `webcashes` of the locked input.
+    pub input_index: usize,
+    /// The claim-or-refund witness.
+    pub witness: HtlcWitness,
+}
 
 /// Failure modes when talking to a webycash-server flavor.
 ///
@@ -87,6 +161,38 @@ impl Client {
             "webcashes": inputs,
             "new_webcashes": outputs,
             "legalese": {"terms": true},
+        });
+        self.post_status(&self.endpoint("/api/v1/replace"), &body)?;
+        Ok(())
+    }
+
+    /// `POST /api/v1/replace` — same as [`Client::replace`] but with the
+    /// HTLC extensions wired up. Use this when an output should be
+    /// HTLC-locked, or when an input is locked and a witness must be
+    /// supplied.
+    ///
+    /// `htlc_locks` and `htlc_witnesses` are typed structs (see
+    /// [`HtlcLockEntry`] / [`HtlcWitnessEntry`]) that serialize into the
+    /// JSON shape documented in
+    /// `webycash-server/docs/referee-zkp-based-swap.md` §7.1. Pass empty slices
+    /// when not used.
+    ///
+    /// The HTLC extensions are accepted by the RGB server only;
+    /// webcash and voucher servers ignore them (their `ReplaceHook`
+    /// impl is a no-op accept). Per docs §1, this is by design.
+    pub fn replace_with_htlc(
+        &self,
+        inputs: &[String],
+        outputs: &[String],
+        htlc_locks: &[HtlcLockEntry],
+        htlc_witnesses: &[HtlcWitnessEntry],
+    ) -> ClientResult<()> {
+        let body = serde_json::json!({
+            "webcashes": inputs,
+            "new_webcashes": outputs,
+            "legalese": {"terms": true},
+            "htlc_locks": htlc_locks,
+            "htlc_witnesses": htlc_witnesses,
         });
         self.post_status(&self.endpoint("/api/v1/replace"), &body)?;
         Ok(())

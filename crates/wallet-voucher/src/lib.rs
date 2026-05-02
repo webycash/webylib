@@ -12,7 +12,43 @@
 #![warn(missing_docs)]
 
 use thiserror::Error;
+use webylib_core::{IssuedNamespace, WalletAsset};
 use webylib_server_client::{Client, ClientError};
+
+/// Zero-sized asset marker for the Voucher flavor. Wire format:
+/// `e{amt}:public:{hash}:{contract_id}:{issuer_fp}`. Splittable by
+/// design (vouchers are always divisible bearer credits).
+#[derive(Debug)]
+pub struct Voucher;
+
+impl WalletAsset for Voucher {
+    const NAME: &'static str = "voucher";
+    type Namespace = IssuedNamespace;
+
+    fn public_token_for_lookup(secret_hex: &str, ns: &IssuedNamespace) -> String {
+        use sha2::{Digest, Sha256};
+        let hash = hex::encode(Sha256::digest(secret_hex.as_bytes()));
+        format!(
+            "e1:public:{hash}:{contract}:{issuer}",
+            contract = ns.contract_id,
+            issuer = ns.issuer_fp,
+        )
+    }
+
+    fn extract_hash_from_response_key(key: &str) -> Option<&str> {
+        let mut parts = key.splitn(5, ':');
+        let _amt = parts.next()?;
+        let _public = parts.next()?;
+        let hash = parts.next()?;
+        let _contract = parts.next()?;
+        let _issuer = parts.next()?;
+        if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+            Some(hash)
+        } else {
+            None
+        }
+    }
+}
 
 /// Failure modes from the wallet's verb methods.
 #[derive(Debug, Error)]
@@ -98,5 +134,26 @@ mod tests {
         let token = "e1.0:secret:aaa:credits:fff".to_string();
         let err = w.pay(&[token], &[]).unwrap_err();
         assert!(matches!(err, WalletError::Invariant(_)));
+    }
+
+    #[test]
+    fn voucher_token_format_includes_namespace() {
+        let ns = IssuedNamespace::new("credits-2026-q2", "f".repeat(40));
+        let token = Voucher::public_token_for_lookup(&"a".repeat(64), &ns);
+        assert!(token.starts_with("e1:public:"));
+        assert!(
+            token.ends_with(":credits-2026-q2:ffffffffffffffffffffffffffffffffffffffff"),
+            "got {token}",
+        );
+    }
+
+    #[test]
+    fn voucher_extract_hash_round_trip() {
+        let key = "e3:public:e3aebbf7c0d2c4f7c1d8e5b6c0d8a1c0c0d8a1c0c0d8a1c0c0d8a1c0c0d8a1c0:credits:abcd";
+        let hash = Voucher::extract_hash_from_response_key(key);
+        assert_eq!(
+            hash,
+            Some("e3aebbf7c0d2c4f7c1d8e5b6c0d8a1c0c0d8a1c0c0d8a1c0c0d8a1c0c0d8a1c0")
+        );
     }
 }
