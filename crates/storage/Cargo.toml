@@ -1,0 +1,41 @@
+[package]
+name = "webylib-storage"
+description = "Wallet-side Store trait + SqliteStore (native) + MemStore + IndexedDB. Generic over Asset; partitioned per (contract_id, issuer_fp) for RGB/Voucher."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+# All three default backends compile cleanly on native AND wasm32:
+#   - mem: pure-Rust HashMap state
+#   - json: serde_json over the in-memory state
+#   - sqlite: rusqlite (default-features=false in workspace.dependencies
+#     so WASM consumers can opt out)
+default = ["json", "mem", "sqlite"]
+# Each backend is a separate cargo feature so consumers (especially WASM)
+# can opt out of native-only deps cleanly.
+sqlite = ["dep:rusqlite"]
+json = ["dep:serde_json"]
+mem = []
+indexeddb = ["dep:web-sys", "dep:js-sys", "dep:wasm-bindgen"]
+
+[dependencies]
+serde = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+hex = { workspace = true }
+
+# Backend-specific (feature-gated)
+serde_json = { workspace = true, optional = true }
+rusqlite = { version = "0.37", features = ["bundled"], optional = true }
+web-sys = { version = "0.3", optional = true }
+js-sys = { version = "0.3", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tempfile = "3"

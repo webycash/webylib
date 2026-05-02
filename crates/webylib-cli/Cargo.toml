@@ -1,0 +1,29 @@
+[package]
+name = "webylib-cli"
+description = "Command-line wallet — webyc binary. Asset-flavor selected via subcommand or build feature."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+# Renamed from `webyc` to `webyca` (asset-aware) so it doesn't clash
+# with the legacy webcash-only `webyc` binary defined in the workspace
+# root Cargo.toml. The legacy CLI will eventually be folded in here.
+[[bin]]
+name = "webyca"
+path = "src/main.rs"
+
+[dependencies]
+webylib-core = { workspace = true }
+webylib-server-client = { workspace = true }
+webylib-wallet-webcash = { workspace = true }
+webylib-wallet-rgb = { workspace = true }
+webylib-wallet-voucher = { workspace = true }
+clap = { version = "4.0", features = ["derive", "env"] }
+clap_complete = "4.0"
+tokio = { version = "1.0", features = ["full"] }
+anyhow = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }

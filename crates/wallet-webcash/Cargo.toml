@@ -1,0 +1,18 @@
+[package]
+name = "webylib-wallet-webcash"
+description = "Webcash specialization of the generic Wallet. Wire-protocol frozen against webcash.org production."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+webylib-core = { workspace = true }
+webylib-hd = { workspace = true }
+webylib-server-client = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }

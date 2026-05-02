@@ -119,6 +119,46 @@ webyc merge --group 20
 - **No OpenSSL** — Pure Rust TLS (rustls), cross-compiles everywhere
 - **Exchange-ready** — Transactional safety, optional seed injection, structured error codes
 
+## Multi-asset support (refactor/asset-traits)
+
+In addition to the legacy webcash-only crate, this workspace ships an
+**asset-gated wallet family** that pairs with the four-binary
+[webycash-server](https://github.com/webycash/webycash-server) family
+(server-webcash, server-rgb, server-rgb-collectible, server-voucher):
+
+| Crate | Server flavor | Verbs |
+|-------|---------------|-------|
+| `webylib-wallet-webcash` | server-webcash | `pay`, `insert` |
+| `webylib-wallet-rgb` | server-rgb / server-rgb-collectible | `transfer`, `insert` |
+| `webylib-wallet-voucher` | server-voucher | `pay`, `insert` |
+
+Plus a multi-asset CLI binary `webyca` that drives all three from one
+command line:
+
+```bash
+# Read-only (flavor-agnostic — works against any server flavor)
+webyca --server http://127.0.0.1:8181 target
+webyca --server http://127.0.0.1:8181 check --tokens 'e1.0:public:HASH'
+
+# Write (flavor-specific verb)
+webyca --server http://127.0.0.1:8181 webcash pay --inputs e1.0:secret:abc \
+    --outputs e0.6:secret:def,e0.4:secret:ghi
+webyca --server http://127.0.0.1:8182 rgb transfer --inputs ... --outputs ...
+webyca --server http://127.0.0.1:8183 voucher pay --inputs ... --outputs ...
+
+# Burn / mining
+webyca --server http://127.0.0.1:8181 burn --secret e1.0:secret:abc
+webyca --server http://127.0.0.1:8181 mining-report --preimage '{"webcash":...}'
+```
+
+The wire format for RGB and Voucher tokens is
+`e{amount}:secret:{hex}:{contract_id}:{issuer_pgp_fp}` —
+the server enforces `(contract_id, issuer_fp)` namespace isolation on
+every replace. Webcash stays bit-for-bit compatible with webcash.org
+production. See the workspace
+[ROADMAP](https://github.com/webycash/webycash-server/blob/refactor/asset-traits/ROADMAP.md#v040--asset-gated-server-family-refactorasset-traits-branch)
+for the full list of asset-trait crates.
+
 ## Platform Support
 
 | Platform | Architecture | Artifact |

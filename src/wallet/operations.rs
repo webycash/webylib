@@ -499,146 +499,103 @@ impl Wallet {
         }
     }
 
+    /// Recover unspent outputs derived from `master_secret_hex` by
+    /// scanning the four HD chains and persisting hits the server
+    /// reports as `spent: false`.
+    ///
+    /// Delegates to the asset-generic [`webylib_core::recover`]; the
+    /// only webcash-specific work this wrapper does is wiring the
+    /// store (insert + chain-depth advance) once `webylib-core` returns
+    /// the `RecoveryReport`.
     pub async fn recover(
         &self,
         master_secret_hex: &str,
         gap_limit: usize,
     ) -> Result<RecoveryResult> {
-        use crate::hd::ChainCode;
+        use std::collections::HashMap;
+        use webylib_core::ChainCode as CoreChain;
+        use webylib_hd::HdWallet as CoreHd;
+        use webylib_server_client::Client as CoreClient;
+        use webylib_wallet_webcash::Webcash;
 
         log::info!("Starting wallet recovery with gap_limit={}", gap_limit);
 
-        let master_secret_bytes = hex::decode(master_secret_hex)
-            .map_err(|_| Error::wallet("Invalid master secret hex format"))?;
-        if master_secret_bytes.len() != 32 {
-            return Err(Error::wallet("Master secret must be 32 bytes"));
+        if gap_limit == 0 {
+            return Err(Error::wallet("gap_limit must be > 0"));
         }
-        let mut arr = [0u8; 32];
-        arr.copy_from_slice(&master_secret_bytes);
-        let hd_wallet = HDWallet::from_master_secret(arr);
+        let hd = CoreHd::from_hex(master_secret_hex)
+            .map_err(|e| Error::wallet(format!("Invalid master secret: {e}")))?;
 
-        let mut recovered_count = 0;
-        let mut total_recovered_amount = Amount::ZERO;
-
-        let chain_codes = [
-            ("RECEIVE", ChainCode::Receive),
-            ("PAY", ChainCode::Pay),
-            ("CHANGE", ChainCode::Change),
-            ("MINING", ChainCode::Mining),
+        // Map our four chain codes onto the core enum's variants.
+        // (Both enums have identical wire semantics; the legacy chain
+        // *names* are the keys our SqliteStore persists.)
+        let chain_codes: [(&str, CoreChain); 4] = [
+            ("RECEIVE", CoreChain::Receive),
+            ("PAY", CoreChain::Pay),
+            ("CHANGE", CoreChain::Change),
+            ("MINING", CoreChain::Mining),
         ];
+        let mut reported_depths: HashMap<CoreChain, u64> = HashMap::new();
+        for (name, code) in &chain_codes {
+            reported_depths.insert(*code, self.store.get_depth(name)?);
+        }
 
-        let reported_depths = {
-            let mut depths = std::collections::HashMap::new();
-            for (name, _) in &chain_codes {
-                depths.insert(name.to_string(), self.store.get_depth(name)?);
-            }
-            depths
-        };
+        let base_url = self.network.base_url().to_string();
+        // The generic op is sync; run it on the blocking pool so we
+        // don't stall the async runtime on each /health_check call.
+        let report = tokio::task::spawn_blocking(move || {
+            let client = CoreClient::new(base_url);
+            webylib_core::recover::<Webcash>(&client, &hd, &(), gap_limit as u64, &reported_depths)
+        })
+        .await
+        .map_err(|e| Error::wallet(format!("recover task: {e}")))?
+        .map_err(|e| Error::server(format!("recovery: {e}")))?;
 
-        for (chain_name, chain_code) in &chain_codes {
-            log::debug!("Scanning chain code: {}", chain_name);
-            let reported_walletdepth = *reported_depths.get(*chain_name).unwrap_or(&0);
-            let mut has_had_webcash = true;
-            let mut current_depth = 0u64;
-            let mut last_used_walletdepth = 0u64;
-            let mut consecutive_empty = 0u64;
-
-            while has_had_webcash {
-                has_had_webcash = false;
-                let mut check_webcashes = std::collections::HashMap::new();
-                let mut batch_webcash = Vec::new();
-
-                for offset in 0..gap_limit {
-                    let depth = current_depth + offset as u64;
-                    let derived_secret_hex = hd_wallet
-                        .derive_secret(*chain_code, depth)
-                        .map_err(|e| Error::crypto(format!("HD derivation failed: {}", e)))?;
-                    let test_webcash = SecretWebcash::new(
-                        SecureString::new(derived_secret_hex.clone()),
-                        Amount::from_str("1").unwrap(),
+        // Persist what came back. `store_directly` handles the SQLite
+        // single-use-seal "already exists" case by surfacing it as an
+        // error; we tolerate it here so a re-run of `recover()` on a
+        // wallet that already holds some recovered tokens is idempotent.
+        let mut recovered_count: usize = 0;
+        let mut total_recovered_amount = Amount::ZERO;
+        for output in &report.recovered {
+            // Webcash always carries amount; the trait's
+            // SERVER_REPORTS_AMOUNT contract guarantees Some here.
+            let amount_wats = output.amount_wats.expect(
+                "Webcash recovery must produce Some(amount_wats); \
+                 SERVER_REPORTS_AMOUNT=true",
+            );
+            let amount = Amount::from_wats(amount_wats);
+            let webcash =
+                SecretWebcash::new(SecureString::new(output.secret_hex.clone()), amount);
+            match self.store_directly(webcash).await {
+                Ok(()) => {
+                    recovered_count += 1;
+                    total_recovered_amount += amount;
+                    log::info!(
+                        "Recovered: {} at {:?}/{}",
+                        amount,
+                        output.chain,
+                        output.depth
                     );
-                    let public_webcash = test_webcash.to_public();
-                    let hash_hex = public_webcash.hash_hex();
-                    check_webcashes.insert(hash_hex, (derived_secret_hex, depth));
-                    batch_webcash.push(public_webcash);
                 }
-
-                let health_result = self.server_health_check(&batch_webcash).await;
-
-                match health_result {
-                    Ok(response) => {
-                        for (public_webcash_str, health_result) in &response.results {
-                            let hash_hex =
-                                if let Some(hash_part) = public_webcash_str.split(':').nth(2) {
-                                    hash_part.to_string()
-                                } else {
-                                    continue;
-                                };
-
-                            if let Some((secret_hex, depth)) = check_webcashes.get(&hash_hex) {
-                                let depth = *depth;
-                                if health_result.spent.is_some() {
-                                    has_had_webcash = true;
-                                    consecutive_empty = 0;
-                                    if depth > last_used_walletdepth {
-                                        last_used_walletdepth = depth;
-                                    }
-                                }
-                                if health_result.spent == Some(false) {
-                                    if let Some(actual_amount_str) = &health_result.amount {
-                                        let amount =
-                                            Amount::from_str(actual_amount_str).map_err(|_| {
-                                                Error::wallet("Invalid amount from server")
-                                            })?;
-                                        let actual_webcash = SecretWebcash::new(
-                                            SecureString::new(secret_hex.clone()),
-                                            amount,
-                                        );
-                                        match self.store_directly(actual_webcash).await {
-                                            Ok(()) => {
-                                                recovered_count += 1;
-                                                total_recovered_amount += amount;
-                                                has_had_webcash = true;
-                                                log::info!(
-                                                    "Recovered: {} at {}/{}",
-                                                    amount,
-                                                    chain_name,
-                                                    depth
-                                                );
-                                            }
-                                            Err(e)
-                                                if e.to_string().contains("UNIQUE constraint")
-                                                    || e.to_string().contains("already exists") =>
-                                            {
-                                                has_had_webcash = true;
-                                            }
-                                            Err(e) => return Err(e),
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        log::warn!("Server error during batch check: {}", e);
-                        consecutive_empty += gap_limit as u64;
-                    }
+                Err(e)
+                    if e.to_string().contains("UNIQUE constraint")
+                        || e.to_string().contains("already exists") =>
+                {
+                    // Already-stored output — recovery is idempotent.
                 }
-
-                if current_depth < reported_walletdepth {
-                    has_had_webcash = true;
-                }
-                if has_had_webcash {
-                    current_depth += gap_limit as u64;
-                }
-                if !has_had_webcash && consecutive_empty >= gap_limit as u64 {
-                    break;
-                }
+                Err(e) => return Err(e),
             }
+        }
 
-            if last_used_walletdepth > 0 && reported_walletdepth < last_used_walletdepth {
-                self.store
-                    .set_depth(chain_name, last_used_walletdepth + 1)?;
+        // Advance per-chain depth markers if the scan saw further-out
+        // usage than the wallet's record.
+        for (name, code) in &chain_codes {
+            let reported = self.store.get_depth(name)?;
+            if let Some(seen) = report.last_used_depth.get(code).copied() {
+                if seen + 1 > reported {
+                    self.store.set_depth(name, seen + 1)?;
+                }
             }
         }
 

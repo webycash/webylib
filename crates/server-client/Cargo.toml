@@ -1,0 +1,24 @@
+[package]
+name = "webylib-server-client"
+description = "AssetServerClient<A: Asset> — generic HTTP client for the asset-gated server. Endpoints absent at compile time when not applicable to A."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+# Reserved for future async + reqwest variants. The default Client uses
+# pure std::net for portability (works on native + wasm32-wasi).
+
+[dependencies]
+webylib-proto-client = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }

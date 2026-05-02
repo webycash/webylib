@@ -1,0 +1,18 @@
+[package]
+name = "webylib-proto-client"
+description = "Wire-format types and parsers, mirrored from server's webycash-proto so the wallet and server stay in lockstep"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+thiserror = { workspace = true }
+# Shares grammar with server's webycash-proto. We may version-pin via the
+# git registry once the server crate is published; for M2 we track via path.

@@ -20,12 +20,31 @@ pub struct UnspentOutputSnapshot {
     pub secret: String,
     pub amount: i64,
     pub created_at: String,
+    /// Asset flavor: `"webcash"` (default for V1 snapshots), `"rgb"`,
+    /// or `"voucher"`. Optional for backward compatibility — V1
+    /// snapshots without this field load as Webcash.
+    #[serde(default)]
+    pub asset_type: Option<String>,
+    /// Contract id for issuer-namespaced flavors (RGB / Voucher).
+    /// Always None for Webcash.
+    #[serde(default)]
+    pub contract_id: Option<String>,
+    /// Issuer's PGP V4 fingerprint (40 hex chars) for namespaced
+    /// flavors. Always None for Webcash.
+    #[serde(default)]
+    pub issuer_fp: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SpentHashSnapshot {
     pub hash: String,
     pub spent_at: String,
+    #[serde(default)]
+    pub asset_type: Option<String>,
+    #[serde(default)]
+    pub contract_id: Option<String>,
+    #[serde(default)]
+    pub issuer_fp: Option<String>,
 }
 
 /// Internal export format for encryption/backup (native only).
@@ -50,6 +69,12 @@ impl Wallet {
                 secret,
                 amount,
                 created_at,
+                // Legacy webylib only knows about Webcash. The new
+                // wallet-rgb / wallet-voucher will populate the
+                // namespace fields when they switch to webylib-storage.
+                asset_type: None,
+                contract_id: None,
+                issuer_fp: None,
             })
             .collect();
 
@@ -60,6 +85,9 @@ impl Wallet {
             .map(|(hash_blob, spent_at)| SpentHashSnapshot {
                 hash: hex::encode(hash_blob),
                 spent_at,
+                asset_type: None,
+                contract_id: None,
+                issuer_fp: None,
             })
             .collect();
 

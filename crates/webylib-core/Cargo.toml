@@ -1,0 +1,26 @@
+[package]
+name = "webylib-core"
+description = "Generic Wallet<A: Asset> — operations, snapshots, encryption, passkey. The flavor crates compose this with their concrete asset types."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+webylib-crypto = { workspace = true }
+webylib-hd = { workspace = true }
+webylib-storage = { workspace = true }
+webylib-proto-client = { workspace = true }
+webylib-auth = { workspace = true }
+webylib-server-client = { workspace = true }
+webylib-macros = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }

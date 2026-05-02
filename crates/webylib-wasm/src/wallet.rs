@@ -76,6 +76,7 @@ fn secret_hash(secret: &str) -> String {
     hex::encode(Sha256::digest(secret.as_bytes()))
 }
 
+#[allow(dead_code)]
 fn now_iso() -> String {
     // JS will override this with actual timestamp
     "".to_string()
@@ -90,6 +91,7 @@ impl WalletState {
             .sum()
     }
 
+    #[allow(dead_code)]
     fn unspent(&self) -> Vec<&Output> {
         self.outputs.iter().filter(|o| !o.spent).collect()
     }
