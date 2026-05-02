@@ -423,7 +423,7 @@ fn recover_rgb21_after_signed_issue() {
         let hd = HdWallet::from_master_secret(seed);
 
         const N: u64 = 3;
-        // Mint N NFTs at MINING:0..N-1 via /issue.
+        // Mint N RGB21 records at MINING:0..N-1 via /issue.
         let started_at = Instant::now();
         for d in 0..N {
             let secret = hd.derive_secret(ChainCode::Mining, d);
@@ -450,7 +450,7 @@ fn recover_rgb21_after_signed_issue() {
         assert_eq!(
             report.count() as u64,
             N,
-            "all N issued NFTs must surface on recovery"
+            "all N issued RGB21 records must surface on recovery"
         );
         // RGB21: amount_wats is None for every recovered output.
         for o in &report.recovered {

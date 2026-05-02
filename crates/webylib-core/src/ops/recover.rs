@@ -173,7 +173,7 @@ fn scan_chain<A: WalletAsset>(
                         })?;
                     Some(parsed)
                 } else {
-                    // Asset has no amount semantics (e.g. RGB21 NFTs):
+                    // Asset has no amount semantics (e.g. RGB21):
                     // the server's `/health_check` response carries no
                     // `amount` field by design.
                     None

@@ -1,4 +1,5 @@
-//! RGB wallet specialization (RGB20 fungible + RGB21 NFT).
+//! RGB wallet specialization for RGB20 (fungible) and RGB21
+//! (non-splittable, licensable — Perpetual or Royalties License).
 //!
 //! Surface mirrors `webyc rgb …` CLI verbs:
 //!   - `transfer(input, recipient_outputs)` — give ownership to someone
@@ -22,12 +23,13 @@ use thiserror::Error;
 use webylib_core::{IssuedNamespace, WalletAsset};
 use webylib_server_client::{Client, ClientError};
 
-/// Zero-sized asset marker for the RGB20 fungible flavor. Wire format:
+/// Zero-sized asset marker for the RGB20 (fungible) flavor. Wire format:
 /// `e{amt}:public:{hash}:{contract_id}:{issuer_fp}`. Splittable.
 #[derive(Debug)]
 pub struct RgbFungible;
 
-/// Zero-sized asset marker for the RGB21 collectible (NFT) flavor.
+/// Zero-sized asset marker for the RGB21 collectible flavor
+/// (non-splittable, licensable — Perpetual or Royalties License).
 /// Wire format: `public:{hash}:{contract_id}:{issuer_fp}` — no amount
 /// segment because each token is unique 1:1.
 #[derive(Debug)]
@@ -67,7 +69,7 @@ impl WalletAsset for RgbFungible {
 impl WalletAsset for RgbCollectible {
     const NAME: &'static str = "rgb-collectible";
     type Namespace = IssuedNamespace;
-    /// RGB21 NFTs carry no amount: the collectible `/health_check`
+    /// RGB21 records carry no amount: the collectible `/health_check`
     /// handler returns `{"spent": ...}` with no `amount` field.
     const SERVER_REPORTS_AMOUNT: bool = false;
 
@@ -114,8 +116,8 @@ pub enum WalletError {
 /// any `RgbWallet` method.
 pub type WalletResult<T> = Result<T, WalletError>;
 
-/// RGB specialisation covering BOTH RGB20 fungible and RGB21
-/// collectible. Verbs:
+/// RGB specialisation covering both RGB20 (fungible) and RGB21
+/// (non-splittable, licensable). Verbs:
 ///   - `transfer` (any arity for RGB20; 1:1 for RGB21)
 ///   - `insert` (1:1 receive-and-rotate, same namespace)
 ///
@@ -147,11 +149,11 @@ impl RgbWallet {
 
     /// `webyc rgb transfer` — give ownership.
     ///
-    /// For **RGB20** (splittable fungible): inputs/outputs follow the
+    /// For **RGB20** (splittable, fungible): inputs/outputs follow the
     /// usual splittable rules — sum(inputs) == sum(outputs). The
     /// recipient's secret(s) are mixed into outputs alongside change.
     ///
-    /// For **RGB21** (non-splittable NFT): exactly 1 input → 1 output.
+    /// For **RGB21** (non-splittable): exactly 1 input → 1 output.
     /// Token wire format omits the amount segment.
     ///
     /// Wire format is asset-flavor-specific; caller passes pre-formatted
@@ -230,7 +232,7 @@ mod tests {
     #[test]
     fn rgb21_extract_hash_round_trip() {
         let key =
-            "public:fbe98164f16e9af34434388e9ac8e9efa286188dedd0f7218e1d9a578b7c3f73:nft-set:1234";
+            "public:fbe98164f16e9af34434388e9ac8e9efa286188dedd0f7218e1d9a578b7c3f73:rgb21-set:1234";
         assert_eq!(
             RgbCollectible::extract_hash_from_response_key(key),
             Some("fbe98164f16e9af34434388e9ac8e9efa286188dedd0f7218e1d9a578b7c3f73")

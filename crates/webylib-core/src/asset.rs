@@ -77,10 +77,10 @@ pub trait WalletAsset {
     /// Whether the server's `/api/v1/health_check` response includes
     /// an `"amount"` field for known tokens of this asset.
     ///
-    /// - Webcash, RGB20 fungible, Voucher: `true`. The wallet relies
-    ///   on the server-reported amount to materialise a recovered
-    ///   output. A missing amount is a wire-format violation.
-    /// - RGB21 collectible: `false`. NFTs have no amount semantics;
-    ///   recovery records the secret/hash and skips amount.
+    /// - Webcash, RGB20, Voucher: `true`. The wallet relies on the
+    ///   server-reported amount to materialise a recovered output. A
+    ///   missing amount is a wire-format violation.
+    /// - RGB21 collectible: `false`. RGB21 records carry no amount
+    ///   semantics; recovery records the secret/hash and skips amount.
     const SERVER_REPORTS_AMOUNT: bool = true;
 }

@@ -18,7 +18,7 @@ pub struct RecoveredOutput<A: WalletAsset> {
     pub hash: String,
     /// Stored amount in wats (8-decimal fixed-point), as the server
     /// reported it. `None` for assets that don't carry amount
-    /// semantics (RGB21 NFTs); `Some(_)` for every other flavor.
+    /// semantics (RGB21); `Some(_)` for every other flavor.
     pub amount_wats: Option<i64>,
     /// Which HD chain the secret came from (`Receive`/`Pay`/`Change`/`Mining`).
     pub chain: crate::asset::ChainCode,

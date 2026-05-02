@@ -478,9 +478,9 @@ fn rgb_collectible_lifecycle() {
     // aren't configured; instead validate the server's structural
     // invariants.
 
-    // health_check on absent NFT must return spent: null
-    let nft_hash = sha256_hex(&"a".repeat(64));
-    let public = format!("public:{nft_hash}:{contract}:{issuer}");
+    // health_check on an absent RGB21 record must return spent: null
+    let absent_hash = sha256_hex(&"a".repeat(64));
+    let public = format!("public:{absent_hash}:{contract}:{issuer}");
     let (status, body) = http_post(
         &format!("http://{bind}/api/v1/health_check"),
         &serde_json::to_string(&serde_json::json!([public.clone()])).unwrap(),
