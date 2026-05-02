@@ -23,7 +23,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.14"
+version = "0.3.15"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT"
@@ -56,7 +56,7 @@ proptest = "1"
 
 [package]
 name = "webylib"
-version = "0.3.14"
+version = "0.3.15"
 edition = "2021"
 rust-version = "1.85"
 description = "Webcash HD wallet library — bearer e-cash with BIP32-style key derivation, SQLite storage, AES-256-GCM encryption, and full C FFI for cross-platform SDKs"
