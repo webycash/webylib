@@ -279,16 +279,19 @@ jobs:
       - name: Publish all crates in topological order
         run: |
           # pub(): publish one crate, retrying on rate-limit (429).
-          # - Parses "try again after <DATE>" from the error and sleeps
-          #   exactly until then (+30 s buffer) using GNU date -d.
-          # - Treats "already uploaded" as success (idempotent re-runs).
+          # Uses `if out=$(…); then` so that set -e (bash -e from GHA)
+          # does not kill the script on a non-zero cargo exit before we
+          # can inspect $out.
           pub() {
             local max_retries=10 attempt=0
             while [ $attempt -lt $max_retries ]; do
               local out ec
-              out=$(cargo publish "$@" 2>&1); ec=$?
+              if out=$(cargo publish "$@" 2>&1); then
+                echo "$out"; return 0
+              else
+                ec=$?
+              fi
               echo "$out"
-              [ $ec -eq 0 ] && return 0
               echo "$out" | grep -q "already uploaded" && return 0
               if echo "$out" | grep -q "Too Many Requests"; then
                 local retry_str wait_secs
@@ -304,7 +307,7 @@ jobs:
                 attempt=$((attempt + 1))
                 continue
               fi
-              return 1
+              return "$ec"
             done
             echo "Exceeded $max_retries retries"; return 1
           }
