@@ -262,14 +262,54 @@ jobs:
             webylib-*.tar.gz.sha256
 
   # ── Publish to crates.io ─────────────────────────────────────────
+  # Sub-crates are published in topological dependency order before the
+  # root webylib crate. Each group is followed by a 30-second pause so
+  # crates.io can index the new versions before dependents resolve them.
   publish-crate:
     name: Publish to crates.io
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test, msrv]
     runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo publish --no-default-features --features bundled-sqlite
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      # ── Level 1: leaf crates (no internal deps) ──────────────────
+      - name: Publish webylib-macros
+        run: cargo publish -p webylib-macros
+      - name: Publish webylib-crypto
+        run: cargo publish -p webylib-crypto
+      - name: Publish webylib-storage
+        run: cargo publish -p webylib-storage
+      - name: Publish webylib-proto-client
+        run: cargo publish -p webylib-proto-client
+      - name: Publish webylib-auth
+        run: cargo publish -p webylib-auth
+      - run: sleep 30
+
+      # ── Level 2: single-dep crates ───────────────────────────────
+      - name: Publish webylib-hd
+        run: cargo publish -p webylib-hd
+      - name: Publish webylib-server-client
+        run: cargo publish -p webylib-server-client
+      - run: sleep 30
+
+      # ── Level 3: webylib-core ─────────────────────────────────────
+      - name: Publish webylib-core
+        run: cargo publish -p webylib-core
+      - run: sleep 30
+
+      # ── Level 4: wallet specialisations ──────────────────────────
+      - name: Publish webylib-wallet-webcash
+        run: cargo publish -p webylib-wallet-webcash
+      - name: Publish webylib-wallet-rgb
+        run: cargo publish -p webylib-wallet-rgb
+      - name: Publish webylib-wallet-voucher
+        run: cargo publish -p webylib-wallet-voucher
+      - run: sleep 30
+
+      # ── Root crate ────────────────────────────────────────────────
+      - name: Publish webylib
+        run: cargo publish --no-default-features --features bundled-sqlite

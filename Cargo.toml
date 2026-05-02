@@ -32,17 +32,17 @@ repository = "https://github.com/webycash/webylib"
 
 [workspace.dependencies]
 # Internal crate paths (workspace members reference each other through these)
-webylib-macros = { path = "crates/macros" }
-webylib-crypto = { path = "crates/crypto" }
-webylib-hd = { path = "crates/hd" }
-webylib-storage = { path = "crates/storage", default-features = false }
-webylib-proto-client = { path = "crates/proto-client" }
-webylib-auth = { path = "crates/auth" }
-webylib-server-client = { path = "crates/server-client" }
-webylib-core = { path = "crates/webylib-core" }
-webylib-wallet-webcash = { path = "crates/wallet-webcash" }
-webylib-wallet-rgb = { path = "crates/wallet-rgb" }
-webylib-wallet-voucher = { path = "crates/wallet-voucher" }
+webylib-macros = { path = "crates/macros", version = "0.3" }
+webylib-crypto = { path = "crates/crypto", version = "0.3" }
+webylib-hd = { path = "crates/hd", version = "0.3" }
+webylib-storage = { path = "crates/storage", version = "0.3", default-features = false }
+webylib-proto-client = { path = "crates/proto-client", version = "0.3" }
+webylib-auth = { path = "crates/auth", version = "0.3" }
+webylib-server-client = { path = "crates/server-client", version = "0.3" }
+webylib-core = { path = "crates/webylib-core", version = "0.3" }
+webylib-wallet-webcash = { path = "crates/wallet-webcash", version = "0.3" }
+webylib-wallet-rgb = { path = "crates/wallet-rgb", version = "0.3" }
+webylib-wallet-voucher = { path = "crates/wallet-voucher", version = "0.3" }
 
 # Pinned versions for shared deps
 serde = { version = "1.0", features = ["derive"] }
