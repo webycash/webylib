@@ -11,7 +11,7 @@
 
 use sha2::{Digest, Sha256};
 use wasm_bindgen::prelude::*;
-use webylib_storage::{JsonStore, MemStore, Store};
+use webylib::storage::{JsonStore, MemStore, Store};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // In-memory wallet
@@ -41,7 +41,7 @@ impl WeyMemWallet {
             hex::decode(&public_hash_hex).map_err(|e| JsValue::from_str(&format!("hex: {e}")))?;
         self.store
             .insert_output(&public_hash_bytes, secret_hex, amount_wats)
-            .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))?;
+            .map_err(|e: webylib::storage::StoreError| JsValue::from_str(&e.to_string()))?;
         Ok(public_hash_hex)
     }
 
@@ -52,7 +52,7 @@ impl WeyMemWallet {
             hex::decode(public_hash_hex).map_err(|e| JsValue::from_str(&format!("hex: {e}")))?;
         self.store
             .mark_spent(&bytes)
-            .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))
+            .map_err(|e: webylib::storage::StoreError| JsValue::from_str(&e.to_string()))
     }
 
     /// Total unspent value in atomic units.
@@ -60,7 +60,7 @@ impl WeyMemWallet {
     pub fn balance_wats(&self) -> Result<i64, JsValue> {
         self.store
             .sum_unspent()
-            .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))
+            .map_err(|e: webylib::storage::StoreError| JsValue::from_str(&e.to_string()))
     }
 
     /// Number of unspent outputs.
@@ -69,7 +69,7 @@ impl WeyMemWallet {
         self.store
             .count_unspent()
             .map(|c| c as u32)
-            .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))
+            .map_err(|e: webylib::storage::StoreError| JsValue::from_str(&e.to_string()))
     }
 
     /// HD chain depth getter (Receive / Pay / Change / Mining).
@@ -78,7 +78,7 @@ impl WeyMemWallet {
         self.store
             .get_depth(chain)
             .map(|d| d as u32)
-            .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))
+            .map_err(|e: webylib::storage::StoreError| JsValue::from_str(&e.to_string()))
     }
 
     /// HD chain depth setter.
@@ -86,7 +86,7 @@ impl WeyMemWallet {
     pub fn set_depth(&self, chain: &str, depth: u32) -> Result<(), JsValue> {
         self.store
             .set_depth(chain, depth as u64)
-            .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))
+            .map_err(|e: webylib::storage::StoreError| JsValue::from_str(&e.to_string()))
     }
 
     /// Wallet metadata get/set.
@@ -94,14 +94,14 @@ impl WeyMemWallet {
     pub fn get_meta(&self, key: &str) -> Result<Option<String>, JsValue> {
         self.store
             .get_meta(key)
-            .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))
+            .map_err(|e: webylib::storage::StoreError| JsValue::from_str(&e.to_string()))
     }
 
     #[wasm_bindgen(js_name = setMeta)]
     pub fn set_meta(&self, key: &str, value: &str) -> Result<(), JsValue> {
         self.store
             .set_meta(key, value)
-            .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))
+            .map_err(|e: webylib::storage::StoreError| JsValue::from_str(&e.to_string()))
     }
 }
 
@@ -136,7 +136,7 @@ impl WeyJsonWallet {
     pub fn from_json(json: &str) -> Result<WeyJsonWallet, JsValue> {
         JsonStore::from_json(json, None)
             .map(|store| WeyJsonWallet { store })
-            .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))
+            .map_err(|e: webylib::storage::StoreError| JsValue::from_str(&e.to_string()))
     }
 
     /// Serialise the current wallet state. JS can store this in
@@ -145,7 +145,7 @@ impl WeyJsonWallet {
     pub fn to_json(&self) -> Result<String, JsValue> {
         self.store
             .to_json()
-            .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))
+            .map_err(|e: webylib::storage::StoreError| JsValue::from_str(&e.to_string()))
     }
 
     #[wasm_bindgen(js_name = insertOutput)]
@@ -155,7 +155,7 @@ impl WeyJsonWallet {
             hex::decode(&public_hash_hex).map_err(|e| JsValue::from_str(&format!("hex: {e}")))?;
         self.store
             .insert_output(&public_hash_bytes, secret_hex, amount_wats)
-            .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))?;
+            .map_err(|e: webylib::storage::StoreError| JsValue::from_str(&e.to_string()))?;
         Ok(public_hash_hex)
     }
 
@@ -163,7 +163,7 @@ impl WeyJsonWallet {
     pub fn balance_wats(&self) -> Result<i64, JsValue> {
         self.store
             .sum_unspent()
-            .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))
+            .map_err(|e: webylib::storage::StoreError| JsValue::from_str(&e.to_string()))
     }
 
     #[wasm_bindgen(js_name = unspentCount)]
@@ -171,7 +171,7 @@ impl WeyJsonWallet {
         self.store
             .count_unspent()
             .map(|c| c as u32)
-            .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))
+            .map_err(|e: webylib::storage::StoreError| JsValue::from_str(&e.to_string()))
     }
 
     #[wasm_bindgen(js_name = markSpent)]
@@ -180,7 +180,7 @@ impl WeyJsonWallet {
             hex::decode(public_hash_hex).map_err(|e| JsValue::from_str(&format!("hex: {e}")))?;
         self.store
             .mark_spent(&bytes)
-            .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))
+            .map_err(|e: webylib::storage::StoreError| JsValue::from_str(&e.to_string()))
     }
 }
 

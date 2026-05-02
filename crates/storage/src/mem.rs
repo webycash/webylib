@@ -10,7 +10,7 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Store, StoreError, StoreResult};
+use crate::storage::{Store, StoreError, StoreResult};
 
 /// Plain-data form of the wallet's in-memory state. Used as the
 /// JsonStore on-disk shape and as the unit-of-rollback for atomic

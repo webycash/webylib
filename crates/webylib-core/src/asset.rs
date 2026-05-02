@@ -21,7 +21,7 @@
 //! Re-exports [`ChainCode`] from [`webylib_hd`] so wallet ops can use
 //! the canonical 4-chain enum without an extra import.
 
-pub use webylib_hd::ChainCode;
+pub use crate::hd::ChainCode;
 
 /// Storage / wire partition for issued assets (RGB, Voucher).
 ///

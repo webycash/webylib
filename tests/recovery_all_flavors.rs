@@ -1,6 +1,6 @@
 //! Per-flavor recovery against the running compose stack.
 //!
-//! Exercises the asset-generic [`webylib_core::recover`] against each
+//! Exercises the asset-generic [`webylib::core::recover`] against each
 //! flavor in `webycash-server/docker-compose.local.yml`:
 //!   - Webcash (port 8181, no namespace)
 //!   - RGB20 fungible (port 8182, IssuedNamespace)
@@ -24,12 +24,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
-use webylib_core::{recover, ChainCode, IssuedNamespace, RecoveryError};
-use webylib_hd::HdWallet;
-use webylib_server_client::Client;
-use webylib_wallet_rgb::{RgbCollectible, RgbFungible};
-use webylib_wallet_voucher::Voucher;
-use webylib_wallet_webcash::Webcash;
+use webylib::core::{recover, ChainCode, IssuedNamespace, RecoveryError};
+use webylib::hd::HdWallet;
+use webylib::server_client::Client;
+use webylib::wallet_rgb::{RgbCollectible, RgbFungible};
+use webylib::wallet_voucher::Voucher;
+use webylib::wallet_webcash::Webcash;
 
 const PORT_WEBCASH: u16 = 8181;
 const PORT_RGB: u16 = 8182;

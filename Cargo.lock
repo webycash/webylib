@@ -2743,7 +2743,7 @@ dependencies = [
 
 [[package]]
 name = "webylib"
-version = "0.3.18"
+version = "0.3.19"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2780,28 +2780,13 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "webylib-core",
- "webylib-hd",
- "webylib-server-client",
- "webylib-wallet-rgb",
- "webylib-wallet-voucher",
- "webylib-wallet-webcash",
- "zeroize",
-]
-
-[[package]]
-name = "webylib-auth"
-version = "0.3.18"
-dependencies = [
- "hex",
- "serde",
- "thiserror 2.0.18",
+ "webylib-macros",
  "zeroize",
 ]
 
 [[package]]
 name = "webylib-cli"
-version = "0.3.18"
+version = "0.3.19"
 dependencies = [
  "anyhow",
  "clap",
@@ -2809,16 +2794,12 @@ dependencies = [
  "hex",
  "sha2",
  "tokio",
- "webylib-core",
- "webylib-server-client",
- "webylib-wallet-rgb",
- "webylib-wallet-voucher",
- "webylib-wallet-webcash",
+ "webylib",
 ]
 
 [[package]]
 name = "webylib-conformance"
-version = "0.3.18"
+version = "0.3.19"
 dependencies = [
  "hex",
  "proptest",
@@ -2829,149 +2810,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "webylib-core"
-version = "0.3.18"
-dependencies = [
- "anyhow",
- "async-trait",
- "hex",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.18",
- "webylib-auth",
- "webylib-crypto",
- "webylib-hd",
- "webylib-macros",
- "webylib-proto-client",
- "webylib-server-client",
- "webylib-storage",
-]
-
-[[package]]
-name = "webylib-crypto"
-version = "0.3.18"
-dependencies = [
- "hex",
- "sha2",
- "thiserror 2.0.18",
- "zeroize",
-]
-
-[[package]]
 name = "webylib-ffi"
-version = "0.3.18"
+version = "0.3.19"
 dependencies = [
  "thiserror 2.0.18",
  "tokio",
- "webylib-core",
+ "webylib",
  "webylib-macros",
- "webylib-wallet-rgb",
- "webylib-wallet-voucher",
- "webylib-wallet-webcash",
-]
-
-[[package]]
-name = "webylib-hd"
-version = "0.3.18"
-dependencies = [
- "hex",
- "sha2",
- "thiserror 2.0.18",
- "webylib-crypto",
- "zeroize",
 ]
 
 [[package]]
 name = "webylib-macros"
-version = "0.3.18"
+version = "0.3.19"
 dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.115",
  "tokio",
  "trybuild",
-]
-
-[[package]]
-name = "webylib-proto-client"
-version = "0.3.18"
-dependencies = [
- "hex",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "webylib-server-client"
-version = "0.3.18"
-dependencies = [
- "anyhow",
- "async-trait",
- "hex",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.18",
- "webylib-proto-client",
-]
-
-[[package]]
-name = "webylib-storage"
-version = "0.3.18"
-dependencies = [
- "anyhow",
- "async-trait",
- "hex",
- "js-sys",
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
-name = "webylib-wallet-rgb"
-version = "0.3.18"
-dependencies = [
- "hex",
- "serde",
- "sha2",
- "thiserror 2.0.18",
- "webylib-core",
- "webylib-hd",
- "webylib-server-client",
-]
-
-[[package]]
-name = "webylib-wallet-voucher"
-version = "0.3.18"
-dependencies = [
- "hex",
- "serde",
- "sha2",
- "thiserror 2.0.18",
- "webylib-core",
- "webylib-hd",
- "webylib-server-client",
-]
-
-[[package]]
-name = "webylib-wallet-webcash"
-version = "0.3.18"
-dependencies = [
- "hex",
- "serde",
- "sha2",
- "thiserror 2.0.18",
- "webylib-core",
- "webylib-hd",
- "webylib-server-client",
 ]
 
 [[package]]
@@ -2990,7 +2846,7 @@ dependencies = [
  "sha2",
  "wasm-bindgen",
  "wasm-bindgen-test",
- "webylib-storage",
+ "webylib",
  "zeroize",
 ]
 

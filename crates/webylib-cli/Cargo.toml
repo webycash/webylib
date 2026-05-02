@@ -16,11 +16,7 @@ name = "webyca"
 path = "src/main.rs"
 
 [dependencies]
-webylib-core = { workspace = true }
-webylib-server-client = { workspace = true }
-webylib-wallet-webcash = { workspace = true }
-webylib-wallet-rgb = { workspace = true }
-webylib-wallet-voucher = { workspace = true }
+webylib = { workspace = true, default-features = false, features = ["native"] }
 clap = { version = "4.0", features = ["derive", "env"] }
 clap_complete = "4.0"
 tokio = { version = "1.0", features = ["full"] }

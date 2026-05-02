@@ -118,12 +118,11 @@ impl RecoveryFixture {
 /// wallet's local store — the whole point of recovery is to re-discover
 /// these tokens from the server.
 fn mine_at_depth(fixture: &RecoveryFixture, depth: u64, amount: &str, subsidy: &str) {
-    use webylib_server_client::Client;
+    use webylib::server_client::Client;
 
     let secret = fixture
         .hd()
-        .derive_secret(ChainCode::Mining, depth)
-        .expect("derive mining secret");
+        .derive_secret(ChainCode::Mining, depth);
     // Subsidy secret must also be unique; derive a deterministic one from
     // the mining secret so re-runs against the same server collide cleanly
     // (the server rejects duplicate subsidy hashes).
@@ -255,7 +254,7 @@ async fn recover_skips_burned_outputs() {
         eprintln!("skipping");
         return;
     }
-    use webylib_server_client::Client;
+    use webylib::server_client::Client;
 
     let f = RecoveryFixture::fresh_unique(0xa3);
     let _ = f.open_wallet().await;
@@ -265,7 +264,7 @@ async fn recover_skips_burned_outputs() {
     }
 
     // Burn MINING:1 directly via the server.
-    let burn_secret = f.hd().derive_secret(ChainCode::Mining, 1).unwrap();
+    let burn_secret = f.hd().derive_secret(ChainCode::Mining, 1);
     let burn_token = format!("e1.0:secret:{burn_secret}");
     let client = Client::new(server_url());
     client.burn(&burn_token).expect("burn");

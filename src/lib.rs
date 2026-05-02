@@ -29,10 +29,30 @@
 pub mod amount;
 pub mod crypto;
 pub mod error;
+// hd: uses crates/hd/ which supersedes the legacy src/hd.rs
+#[path = "../crates/hd/src/lib.rs"]
 pub mod hd;
 pub mod protocol;
 pub mod server;
 pub mod webcash;
+
+// ── Sub-crate modules (source lives in crates/*/src/) ───────────
+#[path = "../crates/storage/src/lib.rs"]
+pub mod storage;
+#[path = "../crates/proto-client/src/lib.rs"]
+pub mod proto_client;
+#[path = "../crates/auth/src/lib.rs"]
+pub mod auth;
+#[path = "../crates/server-client/src/lib.rs"]
+pub mod server_client;
+#[path = "../crates/webylib-core/src/lib.rs"]
+pub mod core;
+#[path = "../crates/wallet-webcash/src/lib.rs"]
+pub mod wallet_webcash;
+#[path = "../crates/wallet-rgb/src/lib.rs"]
+pub mod wallet_rgb;
+#[path = "../crates/wallet-voucher/src/lib.rs"]
+pub mod wallet_voucher;
 
 // ── Native-only (SQLite, tokio, reqwest, keyring) ───────────────
 #[cfg(feature = "ffi")]

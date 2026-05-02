@@ -1,29 +1,19 @@
 [workspace]
 resolver = "2"
 members = [
-    # Existing: legacy webylib root package + WASM crate
+    # Root published crate
     ".",
-    "crates/webylib-wasm",
-
-    # New (M0 scaffolding for the asset-gated refactor; populated in M2+)
+    # Proc-macro crate (must be a separate crate-type = ["proc-macro"])
     "crates/macros",
-    "crates/crypto",
-    "crates/hd",
-    "crates/storage",
-    "crates/proto-client",
-    "crates/auth",
-    "crates/server-client",
-    "crates/webylib-core",
-    "crates/wallet-webcash",
-    "crates/wallet-rgb",
-    "crates/wallet-voucher",
+    # Non-published workspace members that depend on the root
+    "crates/webylib-wasm",
     "crates/webylib-ffi",
     "crates/webylib-cli",
     "crates/conformance",
 ]
 
 [workspace.package]
-version = "0.3.18"
+version = "0.3.19"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT"
@@ -31,18 +21,10 @@ authors = ["Webycash Developers"]
 repository = "https://github.com/webycash/webylib"
 
 [workspace.dependencies]
-# Internal crate paths (workspace members reference each other through these)
+# Proc-macro crate (published separately — proc-macro crates must be standalone)
 webylib-macros = { path = "crates/macros", version = "0.3" }
-webylib-crypto = { path = "crates/crypto", version = "0.3" }
-webylib-hd = { path = "crates/hd", version = "0.3" }
-webylib-storage = { path = "crates/storage", version = "0.3", default-features = false }
-webylib-proto-client = { path = "crates/proto-client", version = "0.3" }
-webylib-auth = { path = "crates/auth", version = "0.3" }
-webylib-server-client = { path = "crates/server-client", version = "0.3" }
-webylib-core = { path = "crates/webylib-core", version = "0.3" }
-webylib-wallet-webcash = { path = "crates/wallet-webcash", version = "0.3" }
-webylib-wallet-rgb = { path = "crates/wallet-rgb", version = "0.3" }
-webylib-wallet-voucher = { path = "crates/wallet-voucher", version = "0.3" }
+# Root webylib crate (used by non-published workspace members)
+webylib = { path = ".", version = "0.3.19", default-features = false }
 
 # Pinned versions for shared deps
 serde = { version = "1.0", features = ["derive"] }
@@ -56,7 +38,7 @@ proptest = "1"
 
 [package]
 name = "webylib"
-version = "0.3.18"
+version = "0.3.19"
 edition = "2021"
 rust-version = "1.85"
 description = "Webcash HD wallet library — bearer e-cash with BIP32-style key derivation, SQLite storage, AES-256-GCM encryption, and full C FFI for cross-platform SDKs"
@@ -72,6 +54,8 @@ include = [
     "src/**/*.rs",
     "tests/**/*.rs",
     "tests/**/*.txt",
+    # Sub-crate source trees included as modules via #[path = "../crates/*/src/..."]
+    "crates/**/*.rs",
     "LICENSE",
     "README.md",
     "CHANGELOG.md",
@@ -121,13 +105,7 @@ rusqlite = { version = "0.37.0", features = ["bundled"], optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json"], optional = true }
 keyring = { version = "3", features = ["apple-native", "linux-native", "windows-native"], optional = true }
 
-# Asset-generic recovery / wallet ops live in these crates. The legacy
-# webylib::Wallet now delegates to them so there's a single recovery
-# implementation shared with wallet-{webcash,rgb,voucher}.
-webylib-core = { workspace = true }
-webylib-hd = { workspace = true }
-webylib-server-client = { workspace = true }
-webylib-wallet-webcash = { workspace = true }
+webylib-macros = { workspace = true }
 
 # WASM (optional)
 web-sys = { version = "0.3", features = ["DomStringList", "Event", "EventTarget", "IdbDatabase", "IdbFactory", "IdbObjectStore", "IdbOpenDbRequest", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbVersionChangeEvent", "Window"], optional = true }
@@ -146,12 +124,6 @@ tempfile = "3.0"
 mockito = "1.7.0"
 ed25519-dalek = "2"
 serde_json = "1"
-webylib-core = { workspace = true }
-webylib-hd = { workspace = true }
-webylib-wallet-webcash = { workspace = true }
-webylib-wallet-rgb = { workspace = true }
-webylib-wallet-voucher = { workspace = true }
-webylib-server-client = { workspace = true }
 
 [features]
 default = ["native", "cli"]
@@ -164,15 +136,37 @@ native = [
     "reqwest?/rustls-tls",
     "dep:keyring",
     "bundled-sqlite",
+    "mem",
+    "json",
+    "sqlite",
 ]
 bundled-sqlite = ["rusqlite?/bundled"]
 
 # WASM: HTTP client via browser fetch, getrandom via JS, IndexedDB persistence
-wasm = ["dep:reqwest", "dep:web-sys", "dep:js-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:futures-channel", "getrandom/js", "getrandom_0_3/wasm_js", "uuid/js"]
+wasm = [
+    "dep:reqwest",
+    "dep:web-sys",
+    "dep:js-sys",
+    "dep:wasm-bindgen",
+    "dep:wasm-bindgen-futures",
+    "dep:futures-channel",
+    "getrandom/js",
+    "getrandom_0_3/wasm_js",
+    "uuid/js",
+    "mem",
+    "json",
+    "indexeddb",
+]
 
 ffi = ["native"]
 cli = ["native", "dep:clap", "dep:rpassword", "dep:dirs-next"]
 passkey = []
+
+# Storage backend features (names match crates/storage/src/lib.rs #[cfg(feature = ...)])
+mem = []
+json = []
+sqlite = ["dep:rusqlite"]
+indexeddb = ["dep:web-sys", "dep:js-sys", "dep:wasm-bindgen"]
 
 [package.metadata.docs.rs]
 all-features = true

@@ -12,8 +12,8 @@
 #![warn(missing_docs)]
 
 use thiserror::Error;
-use webylib_core::{IssuedNamespace, WalletAsset};
-use webylib_server_client::{Client, ClientError};
+use crate::core::{IssuedNamespace, WalletAsset};
+use crate::server_client::{Client, ClientError};
 
 /// Zero-sized asset marker for the Voucher flavor. Wire format:
 /// `e{amt}:public:{hash}:{contract_id}:{issuer_fp}`. Splittable by

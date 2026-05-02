@@ -43,9 +43,9 @@ async fn test_derive_next_secret_increments_depth() {
     master_arr.copy_from_slice(&master_bytes);
     let hd = HDWallet::from_master_secret(master_arr);
 
-    assert_eq!(hd.derive_secret(ChainCode::Receive, 0).unwrap(), secret0);
-    assert_eq!(hd.derive_secret(ChainCode::Receive, 1).unwrap(), secret1);
-    assert_eq!(hd.derive_secret(ChainCode::Receive, 2).unwrap(), secret2);
+    assert_eq!(hd.derive_secret(ChainCode::Receive, 0), secret0);
+    assert_eq!(hd.derive_secret(ChainCode::Receive, 1), secret1);
+    assert_eq!(hd.derive_secret(ChainCode::Receive, 2), secret2);
 }
 
 /// Verify that depth tracking is independent of row count in unspent_outputs.
@@ -69,7 +69,7 @@ async fn test_depth_uses_walletdepths_not_row_count() {
     // Store 10 extra outputs directly — this increases row count but must NOT
     // affect walletdepths. Uses MINING chain secrets to avoid collisions.
     for i in 0..10u64 {
-        let secret = hd.derive_secret(ChainCode::Mining, i).unwrap();
+        let secret = hd.derive_secret(ChainCode::Mining, i);
         let wc = SecretWebcash::new(SecureString::new(secret), Amount::from_wats(100));
         wallet.store_directly(wc).await.unwrap();
     }
@@ -83,7 +83,7 @@ async fn test_depth_uses_walletdepths_not_row_count() {
     assert_eq!(depth, 3, "Must use walletdepths, not COUNT(*)");
     assert_eq!(
         secret,
-        hd.derive_secret(ChainCode::Receive, 3).unwrap(),
+        hd.derive_secret(ChainCode::Receive, 3),
         "Derived secret must match depth 3"
     );
 }
@@ -105,11 +105,11 @@ fn test_hd_derivation_reference_vector() {
     let master = [1u8; 32];
     let hd = HDWallet::from_master_secret(master);
 
-    let receive_0 = hd.derive_secret(ChainCode::Receive, 0).unwrap();
-    let receive_1 = hd.derive_secret(ChainCode::Receive, 1).unwrap();
-    let pay_0 = hd.derive_secret(ChainCode::Pay, 0).unwrap();
-    let change_0 = hd.derive_secret(ChainCode::Change, 0).unwrap();
-    let mining_0 = hd.derive_secret(ChainCode::Mining, 0).unwrap();
+    let receive_0 = hd.derive_secret(ChainCode::Receive, 0);
+    let receive_1 = hd.derive_secret(ChainCode::Receive, 1);
+    let pay_0 = hd.derive_secret(ChainCode::Pay, 0);
+    let change_0 = hd.derive_secret(ChainCode::Change, 0);
+    let mining_0 = hd.derive_secret(ChainCode::Mining, 0);
 
     // Pin exact values — computed from the algorithm, must never change.
     // If these fail, the wallet is incompatible with the Python reference.
@@ -122,13 +122,13 @@ fn test_hd_derivation_reference_vector() {
 
     // Cross-check: re-derive with a fresh HDWallet from same master
     let hd2 = HDWallet::from_master_secret([1u8; 32]);
-    assert_eq!(hd2.derive_secret(ChainCode::Receive, 0).unwrap(), receive_0);
-    assert_eq!(hd2.derive_secret(ChainCode::Pay, 0).unwrap(), pay_0);
+    assert_eq!(hd2.derive_secret(ChainCode::Receive, 0), receive_0);
+    assert_eq!(hd2.derive_secret(ChainCode::Pay, 0), pay_0);
 
     // Pin the actual hex values so any algorithm change is caught
     assert_eq!(
         receive_0,
-        hd.derive_secret(ChainCode::Receive, 0).unwrap(),
+        hd.derive_secret(ChainCode::Receive, 0),
         "RECEIVE/0 must be deterministic"
     );
 
@@ -165,7 +165,7 @@ async fn test_store_directly_and_recovery_determinism() {
     let hd = HDWallet::from_master_secret(master_arr);
 
     for depth in 0..3u64 {
-        let secret_hex = hd.derive_secret(ChainCode::Receive, depth).unwrap();
+        let secret_hex = hd.derive_secret(ChainCode::Receive, depth);
         let wc = SecretWebcash::new(
             SecureString::new(secret_hex),
             Amount::from_wats(1000 * (depth as i64 + 1)),
@@ -190,8 +190,8 @@ async fn test_store_directly_and_recovery_determinism() {
     let hd2 = HDWallet::from_master_secret(master_arr2);
 
     for depth in 0..3u64 {
-        let s1 = hd.derive_secret(ChainCode::Receive, depth).unwrap();
-        let s2 = hd2.derive_secret(ChainCode::Receive, depth).unwrap();
+        let s1 = hd.derive_secret(ChainCode::Receive, depth);
+        let s2 = hd2.derive_secret(ChainCode::Receive, depth);
         assert_eq!(s1, s2, "Secret at depth {} must be identical", depth);
     }
 }

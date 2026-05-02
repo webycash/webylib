@@ -18,4 +18,6 @@
 
 pub mod legacy_webcash;
 
-pub use legacy_webcash::{ChainCode, HdWallet};
+pub use legacy_webcash::{ChainCode, HdError, HdResult, HdWallet};
+/// Backward-compatible alias for [`HdWallet`].
+pub type HDWallet = HdWallet;

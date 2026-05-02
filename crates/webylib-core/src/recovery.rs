@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::asset::WalletAsset;
+use crate::core::asset::WalletAsset;
 
 /// One token the server reported as unspent under the wallet's seed.
 ///
@@ -21,7 +21,7 @@ pub struct RecoveredOutput<A: WalletAsset> {
     /// semantics (RGB21); `Some(_)` for every other flavor.
     pub amount_wats: Option<i64>,
     /// Which HD chain the secret came from (`Receive`/`Pay`/`Change`/`Mining`).
-    pub chain: crate::asset::ChainCode,
+    pub chain: crate::hd::ChainCode,
     /// Depth on that chain.
     pub depth: u64,
     /// Asset namespace this token lives in.
@@ -37,7 +37,7 @@ pub struct RecoveryReport<A: WalletAsset> {
     /// Highest used depth observed on each chain (`+ 1` is the next
     /// fresh depth). Persisters update their chain-depth metadata from
     /// this map; missing entries mean the chain produced no hits.
-    pub last_used_depth: HashMap<crate::asset::ChainCode, u64>,
+    pub last_used_depth: HashMap<crate::hd::ChainCode, u64>,
 }
 
 impl<A: WalletAsset> RecoveryReport<A> {
@@ -77,7 +77,7 @@ pub enum RecoveryError {
         /// Depth of the first secret in the failing batch.
         depth: u64,
         /// Underlying client error.
-        source: webylib_server_client::ClientError,
+        source: crate::server_client::ClientError,
     },
 
     /// The server's response was 200 OK but the JSON didn't parse as

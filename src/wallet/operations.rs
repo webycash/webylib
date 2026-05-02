@@ -8,7 +8,7 @@ use std::str::FromStr;
 use super::Wallet;
 use crate::amount::Amount;
 use crate::error::{Error, Result};
-use crate::hd::HDWallet;
+use crate::hd::HdWallet as HDWallet;
 use crate::webcash::{PublicWebcash, SecretWebcash, SecureString};
 
 use crate::server::{Legalese, ReplaceRequest};
@@ -172,8 +172,7 @@ impl Wallet {
         let hd_wallet = self.hd_wallet()?;
         let depth = self.read_chain_depth("RECEIVE")?;
         let new_secret_hex = hd_wallet
-            .derive_secret(crate::hd::ChainCode::Receive, depth)
-            .map_err(|e| Error::crypto(format!("Failed to generate new secret: {}", e)))?;
+            .derive_secret(crate::hd::ChainCode::Receive, depth);
         let new_webcash = SecretWebcash::new(SecureString::new(new_secret_hex), webcash.amount);
 
         if validate_with_server {
@@ -279,15 +278,13 @@ impl Wallet {
         let change_depth = self.read_chain_depth("CHANGE")?;
 
         let pay_secret = hd_wallet
-            .derive_secret(crate::hd::ChainCode::Pay, pay_depth)
-            .map_err(|e| Error::crypto(format!("Failed to generate payment secret: {}", e)))?;
+            .derive_secret(crate::hd::ChainCode::Pay, pay_depth);
         let payment_webcash = SecretWebcash::new(SecureString::new(pay_secret), amount);
         let mut new_webcashes = vec![payment_webcash.to_string()];
 
         let change_webcash = if change_amount > Amount::ZERO {
             let change_secret = hd_wallet
-                .derive_secret(crate::hd::ChainCode::Change, change_depth)
-                .map_err(|e| Error::crypto(format!("Failed to generate change secret: {}", e)))?;
+                .derive_secret(crate::hd::ChainCode::Change, change_depth);
             let cw = SecretWebcash::new(SecureString::new(change_secret), change_amount);
             new_webcashes.push(cw.to_string());
             Some(cw)
@@ -441,8 +438,7 @@ impl Wallet {
         let hd_wallet = self.hd_wallet()?;
         let change_depth = self.read_chain_depth("CHANGE")?;
         let change_secret_hex = hd_wallet
-            .derive_secret(crate::hd::ChainCode::Change, change_depth)
-            .map_err(|e| Error::crypto(format!("Failed to generate change secret: {}", e)))?;
+            .derive_secret(crate::hd::ChainCode::Change, change_depth);
         let consolidated_webcash =
             SecretWebcash::new(SecureString::new(change_secret_hex), total_amount);
 
@@ -513,10 +509,10 @@ impl Wallet {
         gap_limit: usize,
     ) -> Result<RecoveryResult> {
         use std::collections::HashMap;
-        use webylib_core::ChainCode as CoreChain;
-        use webylib_hd::HdWallet as CoreHd;
-        use webylib_server_client::Client as CoreClient;
-        use webylib_wallet_webcash::Webcash;
+        use crate::core::ChainCode as CoreChain;
+        use crate::hd::HdWallet as CoreHd;
+        use crate::server_client::Client as CoreClient;
+        use crate::wallet_webcash::Webcash;
 
         log::info!("Starting wallet recovery with gap_limit={}", gap_limit);
 
@@ -545,7 +541,7 @@ impl Wallet {
         // don't stall the async runtime on each /health_check call.
         let report = tokio::task::spawn_blocking(move || {
             let client = CoreClient::new(base_url);
-            webylib_core::recover::<Webcash>(&client, &hd, &(), gap_limit as u64, &reported_depths)
+            crate::core::recover::<Webcash>(&client, &hd, &(), gap_limit as u64, &reported_depths)
         })
         .await
         .map_err(|e| Error::wallet(format!("recover task: {e}")))?
@@ -622,8 +618,7 @@ impl Wallet {
 
         let depth = self.store.get_depth(chain_name)?;
         let secret_hex = hd_wallet
-            .derive_secret(chain_code, depth)
-            .map_err(|e| Error::crypto(format!("HD derivation failed: {}", e)))?;
+            .derive_secret(chain_code, depth);
         self.store.set_depth(chain_name, depth + 1)?;
 
         Ok((secret_hex, depth))

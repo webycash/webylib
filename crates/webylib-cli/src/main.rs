@@ -21,10 +21,10 @@ use anyhow::{anyhow, Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 
-use webylib_server_client::Client;
-use webylib_wallet_rgb::RgbWallet;
-use webylib_wallet_voucher::VoucherWallet;
-use webylib_wallet_webcash::WebcashWallet;
+use webylib::server_client::Client;
+use webylib::wallet_rgb::RgbWallet;
+use webylib::wallet_voucher::VoucherWallet;
+use webylib::wallet_webcash::WebcashWallet;
 
 #[derive(Parser, Debug)]
 #[command(

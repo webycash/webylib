@@ -34,11 +34,11 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use webylib_hd::{ChainCode, HdWallet};
-use webylib_server_client::Client;
+use crate::hd::{ChainCode, HdWallet};
+use crate::server_client::Client;
 
-use crate::asset::WalletAsset;
-use crate::recovery::{RecoveredOutput, RecoveryError, RecoveryReport};
+use crate::core::asset::WalletAsset;
+use crate::core::recovery::{RecoveredOutput, RecoveryError, RecoveryReport};
 
 /// Server's `/api/v1/health_check` response envelope. Keys mirror the
 /// (normalised) input wire shape; values are per-token status.

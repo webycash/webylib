@@ -11,7 +11,7 @@ use std::sync::Mutex;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::{Store, StoreError, StoreResult};
+use crate::storage::{Store, StoreError, StoreResult};
 
 /// `Store` implementation backed by a single SQLite connection.
 /// File-backed (via `open`) or in-memory (via `open_in_memory`).

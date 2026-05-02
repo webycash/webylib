@@ -7,8 +7,8 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use crate::mem::{MemState, MemStore};
-use crate::{Store, StoreError, StoreResult};
+use crate::storage::mem::{MemState, MemStore};
+use crate::storage::{Store, StoreError, StoreResult};
 
 /// `MemStore` plus persistence to a JSON file. Every mutation
 /// flushes the entire state to the configured path; reads come from

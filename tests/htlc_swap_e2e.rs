@@ -2,7 +2,7 @@
 //!
 //! Spawns a `webycash-server-rgb` binary (sibling workspace) plus its own
 //! redis container, drives the full HTLC primitive (lock + claim + refund)
-//! via `webylib_server_client::Client::replace_with_htlc`, and asserts the
+//! via `webylib::server_client::Client::replace_with_htlc`, and asserts the
 //! protocol behaves as documented in
 //! `webycash-server/docs/referee-zkp-based-swap.md`.
 //!
@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 
-use webylib_server_client::{
+use webylib::server_client::{
     Client, HtlcLockEntry, HtlcLockRequest, HtlcWitness, HtlcWitnessEntry,
 };
 
@@ -359,7 +359,7 @@ fn wallet_claim_with_wrong_preimage_surfaces_error() {
         )
         .expect_err("wrong preimage must reject");
 
-    use webylib_server_client::ClientError;
+    use webylib::server_client::ClientError;
     assert!(
         matches!(err, ClientError::Http { status: 500, .. }),
         "expected 500: {err:?}"

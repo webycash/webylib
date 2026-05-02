@@ -21,9 +21,9 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
-use webylib_wallet_rgb::RgbWallet;
-use webylib_wallet_voucher::VoucherWallet;
-use webylib_wallet_webcash::WebcashWallet;
+use webylib::wallet_rgb::RgbWallet;
+use webylib::wallet_voucher::VoucherWallet;
+use webylib::wallet_webcash::WebcashWallet;
 
 const PORT_WEBCASH: u16 = 8181;
 const PORT_RGB_FUNGIBLE: u16 = 8182;

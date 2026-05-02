@@ -4,7 +4,7 @@
 //! `webycash-server/crates/conformance/tests/server_rgb21_htlc.rs`. Same
 //! HTLC primitive, same predicate evaluator, same AluVM gate — but
 //! exercised through the typed wallet client API
-//! (`webylib_server_client::Client::{replace_with_htlc, issue}`) instead
+//! (`webylib::server_client::Client::{replace_with_htlc, issue}`) instead
 //! of raw JSON. Together with the existing `htlc_swap_e2e.rs` (fungible)
 //! this proves both flavors of the RGB type work fully through the
 //! webylib client surface.
@@ -21,7 +21,7 @@ use std::time::Duration;
 use ed25519_dalek::{Signer, SigningKey};
 use sha2::{Digest, Sha256};
 
-use webylib_server_client::{
+use webylib::server_client::{
     Client, HtlcLockEntry, HtlcLockRequest, HtlcWitness, HtlcWitnessEntry,
 };
 
@@ -372,7 +372,7 @@ fn rgb21_claim_with_wrong_preimage_surfaces_error() {
         )
         .expect_err("wrong preimage must reject");
 
-    use webylib_server_client::ClientError;
+    use webylib::server_client::ClientError;
     assert!(
         matches!(err, ClientError::Http { status: 500, .. }),
         "expected 500: {err:?}"

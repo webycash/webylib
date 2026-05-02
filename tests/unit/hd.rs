@@ -36,21 +36,21 @@ fn test_secret_derivation_deterministic() {
     let master_secret = [1u8; 32];
     let wallet = HDWallet::from_master_secret(master_secret);
 
-    let secret1 = wallet.derive_secret(ChainCode::Receive, 0).unwrap();
-    let secret2 = wallet.derive_secret(ChainCode::Receive, 0).unwrap();
+    let secret1 = wallet.derive_secret(ChainCode::Receive, 0);
+    let secret2 = wallet.derive_secret(ChainCode::Receive, 0);
     assert_eq!(secret1, secret2);
 
-    let secret3 = wallet.derive_secret(ChainCode::Pay, 0).unwrap();
+    let secret3 = wallet.derive_secret(ChainCode::Pay, 0);
     assert_ne!(secret1, secret3);
 
-    let secret4 = wallet.derive_secret(ChainCode::Receive, 1).unwrap();
+    let secret4 = wallet.derive_secret(ChainCode::Receive, 1);
     assert_ne!(secret1, secret4);
 }
 
 #[test]
 fn test_secret_derivation_format() {
     let wallet = HDWallet::from_master_secret([42u8; 32]);
-    let secret = wallet.derive_secret(ChainCode::Receive, 0).unwrap();
+    let secret = wallet.derive_secret(ChainCode::Receive, 0);
 
     assert!(hex::decode(&secret).is_ok());
     assert_eq!(secret.len(), 64);
@@ -59,7 +59,7 @@ fn test_secret_derivation_format() {
 #[test]
 fn test_derive_receive_secret() {
     let wallet = HDWallet::from_master_secret([1u8; 32]);
-    let secret = wallet.derive_secret(ChainCode::Receive, 0).unwrap();
+    let secret = wallet.derive_secret(ChainCode::Receive, 0);
     assert!(hex::decode(&secret).is_ok());
     assert_eq!(secret.len(), 64);
 }
@@ -67,7 +67,7 @@ fn test_derive_receive_secret() {
 #[test]
 fn test_derive_pay_secret() {
     let wallet = HDWallet::from_master_secret([2u8; 32]);
-    let secret = wallet.derive_secret(ChainCode::Pay, 1).unwrap();
+    let secret = wallet.derive_secret(ChainCode::Pay, 1);
     assert!(hex::decode(&secret).is_ok());
     assert_eq!(secret.len(), 64);
 }
@@ -75,7 +75,7 @@ fn test_derive_pay_secret() {
 #[test]
 fn test_derive_change_secret() {
     let wallet = HDWallet::from_master_secret([3u8; 32]);
-    let secret = wallet.derive_secret(ChainCode::Change, 2).unwrap();
+    let secret = wallet.derive_secret(ChainCode::Change, 2);
     assert!(hex::decode(&secret).is_ok());
     assert_eq!(secret.len(), 64);
 }
@@ -83,7 +83,7 @@ fn test_derive_change_secret() {
 #[test]
 fn test_derive_mining_secret() {
     let wallet = HDWallet::from_master_secret([4u8; 32]);
-    let secret = wallet.derive_secret(ChainCode::Mining, 3).unwrap();
+    let secret = wallet.derive_secret(ChainCode::Mining, 3);
     assert!(hex::decode(&secret).is_ok());
     assert_eq!(secret.len(), 64);
 }
@@ -108,10 +108,10 @@ fn test_master_secret_hex() {
 fn test_domain_separation() {
     let wallet = HDWallet::from_master_secret([5u8; 32]);
 
-    let receive = wallet.derive_secret(ChainCode::Receive, 0).unwrap();
-    let pay = wallet.derive_secret(ChainCode::Pay, 0).unwrap();
-    let change = wallet.derive_secret(ChainCode::Change, 0).unwrap();
-    let mining = wallet.derive_secret(ChainCode::Mining, 0).unwrap();
+    let receive = wallet.derive_secret(ChainCode::Receive, 0);
+    let pay = wallet.derive_secret(ChainCode::Pay, 0);
+    let change = wallet.derive_secret(ChainCode::Change, 0);
+    let mining = wallet.derive_secret(ChainCode::Mining, 0);
 
     let secrets = [receive, pay, change, mining];
     for i in 0..secrets.len() {

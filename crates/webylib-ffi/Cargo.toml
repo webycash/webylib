@@ -13,10 +13,7 @@ name = "webylib_ffi"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
-webylib-core = { workspace = true }
-webylib-wallet-webcash = { workspace = true }
-webylib-wallet-rgb = { workspace = true }
-webylib-wallet-voucher = { workspace = true }
+webylib = { workspace = true, default-features = false, features = ["ffi"] }
 webylib-macros = { workspace = true }
 tokio = { version = "1.0", features = ["full"] }
 thiserror = { workspace = true }

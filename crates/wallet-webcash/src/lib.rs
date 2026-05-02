@@ -15,8 +15,8 @@
 #![warn(missing_docs)]
 
 use thiserror::Error;
-use webylib_core::WalletAsset;
-use webylib_server_client::{Client, ClientError};
+use crate::core::WalletAsset;
+use crate::server_client::{Client, ClientError};
 
 /// Zero-sized asset marker for `WalletAsset` impls. Use to parameterise
 /// asset-generic wallet ops over the Webcash flavor:

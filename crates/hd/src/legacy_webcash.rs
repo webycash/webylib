@@ -56,6 +56,18 @@ impl ChainCode {
         self as u64
     }
 
+    /// Parse a numeric chain code back into the enum. Returns `None` for
+    /// values outside 0–3.
+    pub const fn from_u64(n: u64) -> Option<Self> {
+        match n {
+            0 => Some(ChainCode::Receive),
+            1 => Some(ChainCode::Pay),
+            2 => Some(ChainCode::Change),
+            3 => Some(ChainCode::Mining),
+            _ => None,
+        }
+    }
+
     /// Canonical name used as the `walletdepths` key (matches the legacy
     /// Python wallet JSON shape).
     pub const fn as_str(self) -> &'static str {
@@ -93,6 +105,19 @@ impl HdWallet {
         let mut arr = [0u8; 32];
         arr.copy_from_slice(&bytes);
         Ok(Self::from_master_secret(arr))
+    }
+
+    /// Generate a wallet with a fresh random 32-byte master secret.
+    pub fn new() -> HdResult<Self> {
+        let mut bytes = [0u8; 32];
+        getrandom::getrandom(&mut bytes)
+            .map_err(|e| HdError::InvalidHex(format!("rng: {e}")))?;
+        Ok(Self::from_master_secret(bytes))
+    }
+
+    /// Raw master secret bytes (sensitive — zeroized on drop).
+    pub fn master_secret(&self) -> &[u8; 32] {
+        &self.master_secret
     }
 
     /// Master secret as hex (for backup; treat as sensitive).

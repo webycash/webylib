@@ -262,9 +262,8 @@ jobs:
             webylib-*.tar.gz.sha256
 
   # ── Publish to crates.io ─────────────────────────────────────────
-  # Sub-crates are published in topological dependency order before the
-  # root webylib crate. 30 s sleeps keep us under crates.io's new-crate
-  # rate limit. Already-published versions are skipped (idempotent).
+  # Only webylib-macros (proc-macro, separate crate) and webylib (root)
+  # are published. All other sub-crates are inlined as modules.
   publish-crate:
     name: Publish to crates.io
     if: startsWith(github.ref, 'refs/tags/v')
@@ -276,12 +275,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Publish all crates in topological order
+      - name: Publish webylib-macros then webylib
         run: |
-          # pub(): publish one crate, retrying on rate-limit (429).
-          # Uses `if out=$(…); then` so that set -e (bash -e from GHA)
-          # does not kill the script on a non-zero cargo exit before we
-          # can inspect $out.
           pub() {
             local max_retries=10 attempt=0
             while [ $attempt -lt $max_retries ]; do
@@ -302,7 +297,7 @@ jobs:
                   wait_secs=660
                 fi
                 [ $wait_secs -lt 0 ] && wait_secs=30
-                echo "Rate limited — sleeping ${wait_secs}s (until '${retry_str:-unknown}')..."
+                echo "Rate limited — sleeping ${wait_secs}s..."
                 sleep "$wait_secs"
                 attempt=$((attempt + 1))
                 continue
@@ -312,27 +307,6 @@ jobs:
             echo "Exceeded $max_retries retries"; return 1
           }
 
-          # Topological order — leaf → … → root.
-          # cargo publish itself waits for crates.io to confirm each
-          # upload before returning, so no extra sleep is needed for
-          # index propagation.
-
           pub -p webylib-macros
-          pub -p webylib-crypto
-          pub -p webylib-storage
-          pub -p webylib-proto-client
-          pub -p webylib-auth
-
-          pub -p webylib-hd
-          pub -p webylib-server-client
-
-          pub -p webylib-core
-
-          pub -p webylib-wallet-webcash
-          pub -p webylib-wallet-rgb
-          pub -p webylib-wallet-voucher
-
-          # --allow-dirty: sub-crate verification builds update Cargo.lock
-          # with the new crates.io checksums; the root publish sees those
-          # changes as uncommitted without this flag.
+          # --allow-dirty: macros verification build may touch Cargo.lock
           pub --allow-dirty --no-default-features --features bundled-sqlite
