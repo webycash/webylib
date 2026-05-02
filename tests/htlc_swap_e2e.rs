@@ -236,7 +236,12 @@ fn wallet_drives_full_lock_claim_via_client() {
         witness: HtlcWitness::claim(x_hex.clone(), &bob_secret),
     }];
     client
-        .replace_with_htlc(&claim_inputs, &[bob_final_token.clone()], &[], &witnesses)
+        .replace_with_htlc(
+            &claim_inputs,
+            std::slice::from_ref(&bob_final_token),
+            &[],
+            &witnesses,
+        )
         .expect("claim should succeed");
 
     // Sanity: post-conditions.

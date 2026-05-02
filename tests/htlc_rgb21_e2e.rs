@@ -255,7 +255,12 @@ fn rgb21_lock_and_claim_via_typed_client() {
         witness: HtlcWitness::claim(x_hex.clone(), &bob_secret),
     }];
     client
-        .replace_with_htlc(&claim_inputs, &[bob_final.clone()], &[], &witnesses)
+        .replace_with_htlc(
+            &claim_inputs,
+            std::slice::from_ref(&bob_final),
+            &[],
+            &witnesses,
+        )
         .expect("rgb21 claim should succeed");
 
     // Post-conditions.
