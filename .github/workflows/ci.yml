@@ -263,8 +263,8 @@ jobs:
 
   # ── Publish to crates.io ─────────────────────────────────────────
   # Sub-crates are published in topological dependency order before the
-  # root webylib crate. Each group is followed by a 30-second pause so
-  # crates.io can index the new versions before dependents resolve them.
+  # root webylib crate. 30 s sleeps keep us under crates.io's new-crate
+  # rate limit. Already-published versions are skipped (idempotent).
   publish-crate:
     name: Publish to crates.io
     if: startsWith(github.ref, 'refs/tags/v')
@@ -276,40 +276,36 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
-      # ── Level 1: leaf crates (no internal deps) ──────────────────
-      - name: Publish webylib-macros
-        run: cargo publish -p webylib-macros
-      - name: Publish webylib-crypto
-        run: cargo publish -p webylib-crypto
-      - name: Publish webylib-storage
-        run: cargo publish -p webylib-storage
-      - name: Publish webylib-proto-client
-        run: cargo publish -p webylib-proto-client
-      - name: Publish webylib-auth
-        run: cargo publish -p webylib-auth
-      - run: sleep 30
+      - name: Publish all crates in topological order
+        run: |
+          # Skip "already uploaded" errors so the job is idempotent across
+          # re-runs; any other non-zero exit is a real failure.
+          pub() {
+            local out
+            out=$(cargo publish "$@" 2>&1) && echo "$out" && return 0
+            echo "$out"
+            echo "$out" | grep -q "already uploaded" && return 0
+            return 1
+          }
 
-      # ── Level 2: single-dep crates ───────────────────────────────
-      - name: Publish webylib-hd
-        run: cargo publish -p webylib-hd
-      - name: Publish webylib-server-client
-        run: cargo publish -p webylib-server-client
-      - run: sleep 30
+          # Level 1 — leaf crates
+          pub -p webylib-macros       ; sleep 30
+          pub -p webylib-crypto       ; sleep 30
+          pub -p webylib-storage      ; sleep 30
+          pub -p webylib-proto-client ; sleep 30
+          pub -p webylib-auth         ; sleep 30
 
-      # ── Level 3: webylib-core ─────────────────────────────────────
-      - name: Publish webylib-core
-        run: cargo publish -p webylib-core
-      - run: sleep 30
+          # Level 2
+          pub -p webylib-hd           ; sleep 30
+          pub -p webylib-server-client; sleep 30
 
-      # ── Level 4: wallet specialisations ──────────────────────────
-      - name: Publish webylib-wallet-webcash
-        run: cargo publish -p webylib-wallet-webcash
-      - name: Publish webylib-wallet-rgb
-        run: cargo publish -p webylib-wallet-rgb
-      - name: Publish webylib-wallet-voucher
-        run: cargo publish -p webylib-wallet-voucher
-      - run: sleep 30
+          # Level 3
+          pub -p webylib-core         ; sleep 30
 
-      # ── Root crate ────────────────────────────────────────────────
-      - name: Publish webylib
-        run: cargo publish --no-default-features --features bundled-sqlite
+          # Level 4
+          pub -p webylib-wallet-webcash; sleep 30
+          pub -p webylib-wallet-rgb    ; sleep 30
+          pub -p webylib-wallet-voucher; sleep 30
+
+          # Root
+          pub --no-default-features --features bundled-sqlite
