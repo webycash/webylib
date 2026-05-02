@@ -310,3 +310,13 @@ jobs:
           pub -p webylib-macros
           # --allow-dirty: macros verification build may touch Cargo.lock
           pub --allow-dirty --no-default-features --features bundled-sqlite
+
+      - name: Yank retired micro-crates (0.3.14–0.3.18)
+        run: |
+          for crate in webylib-crypto webylib-hd webylib-storage webylib-proto-client \
+                       webylib-auth webylib-server-client webylib-core \
+                       webylib-wallet-webcash webylib-wallet-rgb webylib-wallet-voucher; do
+            for ver in 0.3.14 0.3.15 0.3.16 0.3.17 0.3.18; do
+              cargo yank --version "$ver" "$crate" || true
+            done
+          done
