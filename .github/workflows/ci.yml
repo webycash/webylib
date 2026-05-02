@@ -278,34 +278,55 @@ jobs:
 
       - name: Publish all crates in topological order
         run: |
-          # Skip "already uploaded" errors so the job is idempotent across
-          # re-runs; any other non-zero exit is a real failure.
+          # pub(): publish one crate, retrying on rate-limit (429).
+          # - Parses "try again after <DATE>" from the error and sleeps
+          #   exactly until then (+30 s buffer) using GNU date -d.
+          # - Treats "already uploaded" as success (idempotent re-runs).
           pub() {
-            local out
-            out=$(cargo publish "$@" 2>&1) && echo "$out" && return 0
-            echo "$out"
-            echo "$out" | grep -q "already uploaded" && return 0
-            return 1
+            local max_retries=10 attempt=0
+            while [ $attempt -lt $max_retries ]; do
+              local out ec
+              out=$(cargo publish "$@" 2>&1); ec=$?
+              echo "$out"
+              [ $ec -eq 0 ] && return 0
+              echo "$out" | grep -q "already uploaded" && return 0
+              if echo "$out" | grep -q "Too Many Requests"; then
+                local retry_str wait_secs
+                retry_str=$(echo "$out" | grep -oP '(?<=try again after ).*(?= and see)')
+                if [ -n "$retry_str" ]; then
+                  wait_secs=$(( $(date -d "$retry_str" +%s) - $(date +%s) + 30 ))
+                else
+                  wait_secs=660
+                fi
+                [ $wait_secs -lt 0 ] && wait_secs=30
+                echo "Rate limited — sleeping ${wait_secs}s (until '${retry_str:-unknown}')..."
+                sleep "$wait_secs"
+                attempt=$((attempt + 1))
+                continue
+              fi
+              return 1
+            done
+            echo "Exceeded $max_retries retries"; return 1
           }
 
-          # Level 1 — leaf crates
-          pub -p webylib-macros       ; sleep 30
-          pub -p webylib-crypto       ; sleep 30
-          pub -p webylib-storage      ; sleep 30
-          pub -p webylib-proto-client ; sleep 30
-          pub -p webylib-auth         ; sleep 30
+          # Topological order — leaf → … → root.
+          # cargo publish itself waits for crates.io to confirm each
+          # upload before returning, so no extra sleep is needed for
+          # index propagation.
 
-          # Level 2
-          pub -p webylib-hd           ; sleep 30
-          pub -p webylib-server-client; sleep 30
+          pub -p webylib-macros
+          pub -p webylib-crypto
+          pub -p webylib-storage
+          pub -p webylib-proto-client
+          pub -p webylib-auth
 
-          # Level 3
-          pub -p webylib-core         ; sleep 30
+          pub -p webylib-hd
+          pub -p webylib-server-client
 
-          # Level 4
-          pub -p webylib-wallet-webcash; sleep 30
-          pub -p webylib-wallet-rgb    ; sleep 30
-          pub -p webylib-wallet-voucher; sleep 30
+          pub -p webylib-core
 
-          # Root
+          pub -p webylib-wallet-webcash
+          pub -p webylib-wallet-rgb
+          pub -p webylib-wallet-voucher
+
           pub --no-default-features --features bundled-sqlite
