@@ -2743,7 +2743,7 @@ dependencies = [
 
 [[package]]
 name = "webylib"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2791,7 +2791,7 @@ dependencies = [
 
 [[package]]
 name = "webylib-auth"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "hex",
  "serde",
@@ -2801,7 +2801,7 @@ dependencies = [
 
 [[package]]
 name = "webylib-cli"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "anyhow",
  "clap",
@@ -2818,7 +2818,7 @@ dependencies = [
 
 [[package]]
 name = "webylib-conformance"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "hex",
  "proptest",
@@ -2830,7 +2830,7 @@ dependencies = [
 
 [[package]]
 name = "webylib-core"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2850,7 +2850,7 @@ dependencies = [
 
 [[package]]
 name = "webylib-crypto"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "hex",
  "sha2",
@@ -2860,7 +2860,7 @@ dependencies = [
 
 [[package]]
 name = "webylib-ffi"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "thiserror 2.0.18",
  "tokio",
@@ -2873,7 +2873,7 @@ dependencies = [
 
 [[package]]
 name = "webylib-hd"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "hex",
  "sha2",
@@ -2884,7 +2884,7 @@ dependencies = [
 
 [[package]]
 name = "webylib-macros"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2895,7 +2895,7 @@ dependencies = [
 
 [[package]]
 name = "webylib-proto-client"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "hex",
  "serde",
@@ -2906,7 +2906,7 @@ dependencies = [
 
 [[package]]
 name = "webylib-server-client"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2920,7 +2920,7 @@ dependencies = [
 
 [[package]]
 name = "webylib-storage"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2937,7 +2937,7 @@ dependencies = [
 
 [[package]]
 name = "webylib-wallet-rgb"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "hex",
  "serde",
@@ -2950,7 +2950,7 @@ dependencies = [
 
 [[package]]
 name = "webylib-wallet-voucher"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "hex",
  "serde",
@@ -2963,7 +2963,7 @@ dependencies = [
 
 [[package]]
 name = "webylib-wallet-webcash"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "hex",
  "serde",
