@@ -332,4 +332,7 @@ jobs:
           pub -p webylib-wallet-rgb
           pub -p webylib-wallet-voucher
 
-          pub --no-default-features --features bundled-sqlite
+          # --allow-dirty: sub-crate verification builds update Cargo.lock
+          # with the new crates.io checksums; the root publish sees those
+          # changes as uncommitted without this flag.
+          pub --allow-dirty --no-default-features --features bundled-sqlite
