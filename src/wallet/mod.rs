@@ -282,8 +282,7 @@ impl Wallet {
             // encrypted JSON we just wrote. Swap the store with an in-memory
             // JSON store so the SQLite connection drops here, BEFORE we read
             // and rewrite the file in encrypt_database().
-            let dummy: Box<dyn Store + Send + Sync> =
-                Box::new(store::json::JsonStore::new(None));
+            let dummy: Box<dyn Store + Send + Sync> = Box::new(store::json::JsonStore::new(None));
             let old_store = std::mem::replace(&mut self.store, dummy);
             drop(old_store);
             self.encrypt_database().await?;

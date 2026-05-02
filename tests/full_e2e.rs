@@ -148,10 +148,7 @@ fn rgb_collectible_read_only_via_webyca() {
     let contract = "rgb21-art-e2e";
     let novel_hash = sha256_hex(&unique_secret(0x91));
     let token = format!("public:{novel_hash}:{contract}:{issuer}");
-    let (ok, stdout, _) = run_webyca(&[
-        "--server", &url,
-        "check", "--tokens", &token,
-    ]);
+    let (ok, stdout, _) = run_webyca(&["--server", &url, "check", "--tokens", &token]);
     assert!(ok);
     assert!(
         stdout.contains(r#""spent": null"#),
@@ -186,8 +183,11 @@ fn rgb20_burn_via_webyca() {
     wallet.server().mining_report(&preimage).expect("mine");
 
     let (ok, _, stderr) = run_webyca(&[
-        "--server", &url,
-        "burn", "--secret", &format!("e10.0:secret:{secret}:{contract}:{issuer}"),
+        "--server",
+        &url,
+        "burn",
+        "--secret",
+        &format!("e10.0:secret:{secret}:{contract}:{issuer}"),
     ]);
     assert!(ok, "rgb20 burn failed: {stderr}");
 
@@ -222,8 +222,11 @@ fn voucher_burn_via_webyca() {
     wallet.server().mining_report(&preimage).expect("mine");
 
     let (ok, _, stderr) = run_webyca(&[
-        "--server", &url,
-        "burn", "--secret", &format!("e25.0:secret:{secret}:{contract}:{issuer}"),
+        "--server",
+        &url,
+        "burn",
+        "--secret",
+        &format!("e25.0:secret:{secret}:{contract}:{issuer}"),
     ]);
     assert!(ok, "voucher burn failed: {stderr}");
 
@@ -254,10 +257,14 @@ fn rgb_cross_namespace_replace_rejected_via_webyca() {
     let s_a = unique_secret(0xc1);
     let s_b = unique_secret(0xc2);
     let (ok, _, stderr) = run_webyca(&[
-        "--server", &url,
-        "rgb", "transfer",
-        "--inputs", &format!("e1.0:secret:{s_a}:contract-A:{issuer}"),
-        "--outputs", &format!("e1.0:secret:{s_b}:contract-B:{issuer}"),
+        "--server",
+        &url,
+        "rgb",
+        "transfer",
+        "--inputs",
+        &format!("e1.0:secret:{s_a}:contract-A:{issuer}"),
+        "--outputs",
+        &format!("e1.0:secret:{s_b}:contract-B:{issuer}"),
     ]);
     assert!(!ok, "cross-namespace must reject; got success");
     assert!(
@@ -288,7 +295,8 @@ fn derive_public_and_verify_match_real_server_state() {
     // 5a. derive-public locally; output must match sha256(secret_hex).
     let (ok, stdout_a, stderr) = run_webyca(&[
         "derive-public",
-        "--secret", &format!("e1.0:secret:{secret}"),
+        "--secret",
+        &format!("e1.0:secret:{secret}"),
     ]);
     assert!(ok, "derive-public failed: {stderr}");
     let derived = stdout_a.trim();
@@ -298,8 +306,10 @@ fn derive_public_and_verify_match_real_server_state() {
     // 5b. verify the same pair — exit 0.
     let (ok, _, _) = run_webyca(&[
         "verify",
-        "--secret", &format!("e1.0:secret:{secret}"),
-        "--public", derived,
+        "--secret",
+        &format!("e1.0:secret:{secret}"),
+        "--public",
+        derived,
     ]);
     assert!(ok, "verify should match");
 
@@ -308,8 +318,10 @@ fn derive_public_and_verify_match_real_server_state() {
     let out = Command::new(&webyc)
         .args([
             "verify",
-            "--secret", &format!("e1.0:secret:{secret}"),
-            "--public", "e1.0:public:wrong",
+            "--secret",
+            &format!("e1.0:secret:{secret}"),
+            "--public",
+            "e1.0:public:wrong",
         ])
         .output()
         .expect("spawn");
@@ -321,7 +333,10 @@ fn derive_public_and_verify_match_real_server_state() {
     );
 
     // 5d. The server must agree the derived public is unspent.
-    let body = wallet.server().health_check(&[derived.to_string()]).expect("hc");
+    let body = wallet
+        .server()
+        .health_check(&[derived.to_string()])
+        .expect("hc");
     assert!(
         body.contains(r#""spent": false"#),
         "server doesn't see derived public as unspent: {body}"

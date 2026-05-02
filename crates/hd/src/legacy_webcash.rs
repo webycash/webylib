@@ -82,8 +82,8 @@ impl HdWallet {
 
     /// Build from a 64-char hex string.
     pub fn from_hex(hex_str: &str) -> HdResult<Self> {
-        let bytes = hex::decode(hex_str.trim())
-            .map_err(|e| HdError::InvalidHex(format!("decode: {e}")))?;
+        let bytes =
+            hex::decode(hex_str.trim()).map_err(|e| HdError::InvalidHex(format!("decode: {e}")))?;
         if bytes.len() != 32 {
             return Err(HdError::InvalidHex(format!(
                 "expected 32 bytes, got {}",
@@ -136,7 +136,10 @@ mod tests {
         ];
         // Recompute via the documented formula and assert determinism +
         // distinctness across (chain, depth) pairs.
-        let derived: Vec<_> = cases.iter().map(|(c, d)| hd.derive_secret(*c, *d)).collect();
+        let derived: Vec<_> = cases
+            .iter()
+            .map(|(c, d)| hd.derive_secret(*c, *d))
+            .collect();
         // All derivations must be valid 64-char hex.
         for s in &derived {
             assert_eq!(s.len(), 64);
@@ -180,8 +183,7 @@ mod tests {
         // Computed by running the legacy `webylib::hd::HDWallet::derive_secret`
         // with the same inputs. SHA256("webcashwalletv1") || itself ||
         // master_secret || 3u64::to_be_bytes() || 0u64::to_be_bytes().
-        let expected_mining_0 =
-            "8acd9c43cf36ec040ed16f4a86b86b4a3a98e3814de63b3d6cd5b8db83080acc";
+        let expected_mining_0 = "8acd9c43cf36ec040ed16f4a86b86b4a3a98e3814de63b3d6cd5b8db83080acc";
         // We can't hardcode without re-deriving, but we CAN assert the
         // formula by recomputing it with sha2 directly here:
         let tag = Sha256::digest(b"webcashwalletv1");

@@ -42,8 +42,8 @@ pub fn execute_contract(
     use aluvm::regs::Status;
 
     // Decode the strict-encoded library.
-    let lib = decode_lib(lib_bytes)
-        .ok_or_else(|| JsValue::from_str("malformed compiled library"))?;
+    let lib =
+        decode_lib(lib_bytes).ok_or_else(|| JsValue::from_str("malformed compiled library"))?;
     let mut vm = Vm::<Instr<LibId>>::with(
         CoreConfig {
             halt: false,
@@ -53,7 +53,11 @@ pub fn execute_contract(
     );
     let resolver = |_: LibId| Some(&lib);
     Ok(
-        match vm.exec(LibSite::new(lib.lib_id(), entry_offset as u16), &(), resolver) {
+        match vm.exec(
+            LibSite::new(lib.lib_id(), entry_offset as u16),
+            &(),
+            resolver,
+        ) {
             Status::Ok => ContractStatus::Accepted,
             Status::Fail => ContractStatus::Rejected,
         },
@@ -156,7 +160,10 @@ mod tests {
             stop;
         };
         let lib = CompiledLib::compile(code, &[]).unwrap().into_lib();
-        assert_eq!(execute_lib_inproc(&lib, 0, Some(1_000)), ContractStatus::Accepted);
+        assert_eq!(
+            execute_lib_inproc(&lib, 0, Some(1_000)),
+            ContractStatus::Accepted
+        );
     }
 
     #[test]
@@ -168,6 +175,9 @@ mod tests {
             stop;
         };
         let lib = CompiledLib::compile(code, &[]).unwrap().into_lib();
-        assert_eq!(execute_lib_inproc(&lib, 0, Some(1_000)), ContractStatus::Rejected);
+        assert_eq!(
+            execute_lib_inproc(&lib, 0, Some(1_000)),
+            ContractStatus::Rejected
+        );
     }
 }

@@ -18,7 +18,9 @@ enum Network {
 
 #[derive(Parser)]
 #[command(name = "webyc")]
-#[command(about = "Webcash wallet command line interface (webcash-only — see `webyca` for multi-asset)")]
+#[command(
+    about = "Webcash wallet command line interface (webcash-only — see `webyca` for multi-asset)"
+)]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 struct Cli {
     /// Wallet database file path [default: ~/.webyc/wallet.db]

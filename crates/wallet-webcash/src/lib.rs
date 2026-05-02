@@ -182,6 +182,9 @@ mod tests {
             Some("fbe98164f16e9af34434388e9ac8e9efa286188dedd0f7218e1d9a578b7c3f73")
         );
         assert_eq!(Webcash::extract_hash_from_response_key("garbage"), None);
-        assert_eq!(Webcash::extract_hash_from_response_key("e1:public:short"), None);
+        assert_eq!(
+            Webcash::extract_hash_from_response_key("e1:public:short"),
+            None
+        );
     }
 }

@@ -116,12 +116,7 @@ impl Store for MemStore {
         Ok(g.meta.clone())
     }
 
-    fn insert_output(
-        &self,
-        secret_hash: &[u8],
-        secret: &str,
-        amount: i64,
-    ) -> StoreResult<()> {
+    fn insert_output(&self, secret_hash: &[u8], secret: &str, amount: i64) -> StoreResult<()> {
         let mut g = self.state.lock().map_err(lock_err)?;
         if g.unspent.iter().any(|e| e.secret_hash == secret_hash) {
             return Err(StoreError::Constraint(format!(

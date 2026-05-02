@@ -50,12 +50,14 @@ fn images_built() -> bool {
         .ok()
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .unwrap_or_default();
-    ["webycash/server-webcash:dev",
-     "webycash/server-rgb:dev",
-     "webycash/server-rgb-collectible:dev",
-     "webycash/server-voucher:dev"]
-        .iter()
-        .all(|img| out.contains(img))
+    [
+        "webycash/server-webcash:dev",
+        "webycash/server-rgb:dev",
+        "webycash/server-rgb-collectible:dev",
+        "webycash/server-voucher:dev",
+    ]
+    .iter()
+    .all(|img| out.contains(img))
 }
 
 fn compose_dir() -> std::path::PathBuf {
@@ -88,10 +90,19 @@ impl Compose {
 
         let status = Command::new("docker")
             .args([
-                "compose", "-f", COMPOSE_FILE, "up", "-d",
-                "redis-webcash", "redis-rgb", "redis-rgb-collectible",
-                "redis-voucher", "ddb-local",
-                "server-webcash", "server-rgb", "server-rgb-collectible",
+                "compose",
+                "-f",
+                COMPOSE_FILE,
+                "up",
+                "-d",
+                "redis-webcash",
+                "redis-rgb",
+                "redis-rgb-collectible",
+                "redis-voucher",
+                "ddb-local",
+                "server-webcash",
+                "server-rgb",
+                "server-rgb-collectible",
                 "server-voucher",
             ])
             .current_dir(compose_dir())
@@ -104,7 +115,12 @@ impl Compose {
             return None;
         }
         // Wait for each server's /api/v1/target to respond.
-        for port in [PORT_WEBCASH, PORT_RGB_FUNGIBLE, PORT_VOUCHER, PORT_RGB_COLLECTIBLE] {
+        for port in [
+            PORT_WEBCASH,
+            PORT_RGB_FUNGIBLE,
+            PORT_VOUCHER,
+            PORT_RGB_COLLECTIBLE,
+        ] {
             if !await_target("127.0.0.1", port, Duration::from_secs(20)) {
                 eprintln!("server on port {port} did not become ready");
                 let _ = Self::down_inner();
@@ -233,8 +249,7 @@ fn webcash_lifecycle() {
     // 2. health_check after mine
     let (_, body) = http_post(
         &format!("http://{bind}/api/v1/health_check"),
-        &serde_json::to_string(&serde_json::json!([format!("e1.0:public:{public_hash}")]))
-            .unwrap(),
+        &serde_json::to_string(&serde_json::json!([format!("e1.0:public:{public_hash}")])).unwrap(),
     )
     .unwrap();
     assert!(body.contains(r#""spent": false"#), "[webcash] hc1: {body}");

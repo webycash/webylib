@@ -125,8 +125,14 @@ impl RgbServer {
         let redis_name = format!("htlc-e2e-redis-{}", short_id());
         let started = Command::new("docker")
             .args([
-                "run", "-d", "--rm", "--name", &redis_name, "-p",
-                &format!("{redis_port}:6379"), "redis:7-alpine",
+                "run",
+                "-d",
+                "--rm",
+                "--name",
+                &redis_name,
+                "-p",
+                &format!("{redis_port}:6379"),
+                "redis:7-alpine",
             ])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -223,11 +229,8 @@ fn wallet_drives_full_lock_claim_via_client() {
         .expect("lock should succeed");
 
     // Step 2: Bob claims with the preimage. Output owner = Bob's claim secret.
-    let bob_final_token =
-        format!("e1.0:secret:{bob_secret}:{contract}:{ISSUER}");
-    let claim_inputs = vec![format!(
-        "e1.0:secret:{locked_secret}:{contract}:{ISSUER}"
-    )];
+    let bob_final_token = format!("e1.0:secret:{bob_secret}:{contract}:{ISSUER}");
+    let claim_inputs = vec![format!("e1.0:secret:{locked_secret}:{contract}:{ISSUER}")];
     let witnesses = vec![HtlcWitnessEntry {
         input_index: 0,
         witness: HtlcWitness::claim(x_hex.clone(), &bob_secret),
@@ -249,8 +252,14 @@ fn wallet_drives_full_lock_claim_via_client() {
             ),
         ])
         .expect("hc");
-    assert!(body.contains(r#""spent": true"#), "locked must be spent: {body}");
-    assert!(body.contains(r#""spent": false"#), "claim output must be unspent: {body}");
+    assert!(
+        body.contains(r#""spent": true"#),
+        "locked must be spent: {body}"
+    );
+    assert!(
+        body.contains(r#""spent": false"#),
+        "claim output must be unspent: {body}"
+    );
 }
 
 #[test]

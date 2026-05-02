@@ -13,9 +13,9 @@
 //! authoritative reference for downstream JS callers.
 #![allow(missing_docs)]
 
-pub mod wallet;
-pub mod storage;
 pub mod contract;
+pub mod storage;
+pub mod wallet;
 
 use aes_gcm::aead::{generic_array::GenericArray, Aead, KeyInit};
 use aes_gcm::Aes256Gcm;

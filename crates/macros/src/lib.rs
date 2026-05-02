@@ -81,7 +81,11 @@ impl Parse for FfiArgs {
         let metas: syn::punctuated::Punctuated<syn::MetaNameValue, syn::Token![,]> =
             input.parse_terminated(syn::MetaNameValue::parse, syn::Token![,])?;
         for m in metas {
-            let key = m.path.get_ident().map(|i| i.to_string()).unwrap_or_default();
+            let key = m
+                .path
+                .get_ident()
+                .map(|i| i.to_string())
+                .unwrap_or_default();
             let val = match m.value {
                 syn::Expr::Lit(syn::ExprLit {
                     lit: syn::Lit::Str(s),
@@ -128,7 +132,10 @@ fn expand_ffi_export(args: FfiArgs, mut func: ItemFn) -> syn::Result<TokenStream
             ));
         };
         let Pat::Ident(pat_ident) = &*pat_ty.pat else {
-            return Err(syn::Error::new(pat_ty.pat.span(), "expected simple identifier"));
+            return Err(syn::Error::new(
+                pat_ty.pat.span(),
+                "expected simple identifier",
+            ));
         };
         let name = pat_ident.ident.clone();
         let ty = &*pat_ty.ty;

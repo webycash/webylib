@@ -28,8 +28,7 @@ fn sql_err<T: ToString>(prefix: &str, e: T) -> StoreError {
 impl SqliteStore {
     /// Open or create a SQLite database at `path` and apply the schema.
     pub fn open(path: impl AsRef<Path>) -> StoreResult<Self> {
-        let conn =
-            Connection::open(path.as_ref()).map_err(|e| sql_err("open", e))?;
+        let conn = Connection::open(path.as_ref()).map_err(|e| sql_err("open", e))?;
         Self::initialise(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
@@ -122,19 +121,16 @@ impl Store for SqliteStore {
             .prepare("SELECT key, value FROM wallet_metadata ORDER BY key")
             .map_err(|e| sql_err("prepare", e))?;
         let map = stmt
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
             .map_err(|e| sql_err("query", e))?
             .collect::<std::result::Result<HashMap<_, _>, _>>()
             .map_err(|e| sql_err("collect", e))?;
         Ok(map)
     }
 
-    fn insert_output(
-        &self,
-        secret_hash: &[u8],
-        secret: &str,
-        amount: i64,
-    ) -> StoreResult<()> {
+    fn insert_output(&self, secret_hash: &[u8], secret: &str, amount: i64) -> StoreResult<()> {
         let conn = self.lock()?;
         conn.execute(
             "INSERT INTO unspent_outputs (secret_hash, secret, amount, spent) \
@@ -174,11 +170,7 @@ impl Store for SqliteStore {
         .map_err(|e| sql_err("insert_spent_hash", e))
     }
 
-    fn update_output_amount(
-        &self,
-        secret_hash: &[u8],
-        new_amount: i64,
-    ) -> StoreResult<()> {
+    fn update_output_amount(&self, secret_hash: &[u8], new_amount: i64) -> StoreResult<()> {
         let conn = self.lock()?;
         conn.execute(
             "UPDATE unspent_outputs SET amount = ?1 \
@@ -198,7 +190,9 @@ impl Store for SqliteStore {
             )
             .map_err(|e| sql_err("prepare", e))?;
         let rows = stmt
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
             .map_err(|e| sql_err("query", e))?
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(|e| sql_err("collect", e))?;
@@ -208,9 +202,7 @@ impl Store for SqliteStore {
     fn get_unspent_full(&self) -> StoreResult<Vec<(String, i64, String)>> {
         let conn = self.lock()?;
         let mut stmt = conn
-            .prepare(
-                "SELECT secret, amount, created_at FROM unspent_outputs WHERE spent = 0",
-            )
+            .prepare("SELECT secret, amount, created_at FROM unspent_outputs WHERE spent = 0")
             .map_err(|e| sql_err("prepare", e))?;
         let rows = stmt
             .query_map([], |row| {
@@ -229,9 +221,7 @@ impl Store for SqliteStore {
     fn get_all_outputs(&self) -> StoreResult<Vec<(String, i64, String, i32)>> {
         let conn = self.lock()?;
         let mut stmt = conn
-            .prepare(
-                "SELECT secret, amount, created_at, spent FROM unspent_outputs ORDER BY id",
-            )
+            .prepare("SELECT secret, amount, created_at, spent FROM unspent_outputs ORDER BY id")
             .map_err(|e| sql_err("prepare", e))?;
         let rows = stmt
             .query_map([], |row| {
@@ -348,24 +338,19 @@ impl Store for SqliteStore {
             "DELETE FROM spent_hashes",
             "DELETE FROM walletdepths",
         ] {
-            conn.execute(sql, [])
-                .map_err(|e| sql_err("clear_all", e))?;
+            conn.execute(sql, []).map_err(|e| sql_err("clear_all", e))?;
         }
         Ok(())
     }
 
-    fn atomic(
-        &self,
-        f: &mut dyn FnMut(&dyn Store) -> StoreResult<()>,
-    ) -> StoreResult<()> {
+    fn atomic(&self, f: &mut dyn FnMut(&dyn Store) -> StoreResult<()>) -> StoreResult<()> {
         // We can't rebuild a mid-transaction Store from a `Transaction`
         // without reproducing the entire impl in a wrapper. Instead, take
         // the SQLite-level approach: BEGIN, run `f` against `self`, COMMIT
         // or ROLLBACK based on the result. The Mutex serialises access so
         // there's no concurrent-writer race.
         let conn = self.lock()?;
-        conn.execute("BEGIN", [])
-            .map_err(|e| sql_err("begin", e))?;
+        conn.execute("BEGIN", []).map_err(|e| sql_err("begin", e))?;
         // Drop the lock before re-entering through `&dyn Store`; the closure
         // will re-acquire it. SQLite's connection-level mutex inside rusqlite
         // is what serialises us.
@@ -374,7 +359,8 @@ impl Store for SqliteStore {
         let conn = self.lock()?;
         match &result {
             Ok(()) => {
-                conn.execute("COMMIT", []).map_err(|e| sql_err("commit", e))?;
+                conn.execute("COMMIT", [])
+                    .map_err(|e| sql_err("commit", e))?;
             }
             Err(_) => {
                 conn.execute("ROLLBACK", [])

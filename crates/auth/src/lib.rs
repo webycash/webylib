@@ -5,4 +5,3 @@
 //! pins to rpgp.
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
-

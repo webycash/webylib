@@ -14,9 +14,9 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
-use webylib_wallet_webcash::WebcashWallet;
 use webylib_wallet_rgb::RgbWallet;
 use webylib_wallet_voucher::VoucherWallet;
+use webylib_wallet_webcash::WebcashWallet;
 
 const PORT_WEBCASH: u16 = 8181;
 const PORT_RGB_FUNGIBLE: u16 = 8182;
@@ -118,9 +118,12 @@ fn webyc_webcash_pay_then_insert() {
     let change = run_unique_secret(0x33);
     let out = Command::new(&webyc)
         .args([
-            "--server", &server_url,
-            "webcash", "pay",
-            "--inputs", &format!("e1.0:secret:{secret}"),
+            "--server",
+            &server_url,
+            "webcash",
+            "pay",
+            "--inputs",
+            &format!("e1.0:secret:{secret}"),
             "--outputs",
             &format!("e0.4:secret:{recipient},e0.6:secret:{change}"),
         ])
@@ -137,10 +140,14 @@ fn webyc_webcash_pay_then_insert() {
     let bob = run_unique_secret(0x34);
     let status = Command::new(&webyc)
         .args([
-            "--server", &server_url,
-            "webcash", "insert",
-            "--received", &format!("e0.6:secret:{change}"),
-            "--rotate-to", &format!("e0.6:secret:{bob}"),
+            "--server",
+            &server_url,
+            "webcash",
+            "insert",
+            "--received",
+            &format!("e0.6:secret:{change}"),
+            "--rotate-to",
+            &format!("e0.6:secret:{bob}"),
         ])
         .status()
         .expect("spawn webyc");
@@ -155,7 +162,10 @@ fn webyc_webcash_pay_then_insert() {
             format!("e0.4:public:{recipient_hash}"),
         ])
         .expect("hc");
-    assert!(body.contains(r#""spent": false"#), "[webcash cli] hc: {body}");
+    assert!(
+        body.contains(r#""spent": false"#),
+        "[webcash cli] hc: {body}"
+    );
 }
 
 #[test]
@@ -199,10 +209,14 @@ fn webyc_rgb_transfer_then_insert() {
     let bob = run_unique_secret(0x43);
     let status = Command::new(&webyc)
         .args([
-            "--server", &server_url,
-            "rgb", "insert",
-            "--received", &format!("e20.0:secret:{recipient}:{contract}:{issuer}"),
-            "--rotate-to", &format!("e20.0:secret:{bob}:{contract}:{issuer}"),
+            "--server",
+            &server_url,
+            "rgb",
+            "insert",
+            "--received",
+            &format!("e20.0:secret:{recipient}:{contract}:{issuer}"),
+            "--rotate-to",
+            &format!("e20.0:secret:{bob}:{contract}:{issuer}"),
         ])
         .status()
         .expect("spawn webyc");
@@ -250,11 +264,14 @@ fn webyc_voucher_pay_then_insert() {
     let bob = run_unique_secret(0x53);
     let status = Command::new(&webyc)
         .args([
-            "--server", &server_url,
-            "voucher", "insert",
+            "--server",
+            &server_url,
+            "voucher",
+            "insert",
             "--received",
             &format!("e10.0:secret:{recipient}:{contract}:{issuer}"),
-            "--rotate-to", &format!("e10.0:secret:{bob}:{contract}:{issuer}"),
+            "--rotate-to",
+            &format!("e10.0:secret:{bob}:{contract}:{issuer}"),
         ])
         .status()
         .expect("spawn webyc");
@@ -307,12 +324,19 @@ fn webyc_check_against_webcash_unknown_token() {
     let novel_hash = sha256_hex(&run_unique_secret(0x60));
     let out = Command::new(&webyc)
         .args([
-            "--server", &url,
-            "check", "--tokens", &format!("e1.0:public:{novel_hash}"),
+            "--server",
+            &url,
+            "check",
+            "--tokens",
+            &format!("e1.0:public:{novel_hash}"),
         ])
         .output()
         .expect("spawn webyc check");
-    assert!(out.status.success(), "check failed: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "check failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
         stdout.contains(r#""spent": null"#),
@@ -346,8 +370,11 @@ fn webyc_burn_consumes_a_mined_secret() {
     // webyca burn the secret.
     let out = Command::new(&webyc)
         .args([
-            "--server", &url,
-            "burn", "--secret", &format!("e1.0:secret:{secret}"),
+            "--server",
+            &url,
+            "burn",
+            "--secret",
+            &format!("e1.0:secret:{secret}"),
         ])
         .output()
         .expect("spawn webyc burn");

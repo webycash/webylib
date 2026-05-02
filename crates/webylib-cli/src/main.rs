@@ -52,7 +52,7 @@ Token wire format:
 
     webcash:           e{amount}:secret:{hex64}
     rgb20 / voucher:   e{amount}:secret:{hex64}:{contract_id}:{issuer_fp}
-    rgb21 collectible: secret:{hex64}:{contract_id}:{issuer_fp}",
+    rgb21 collectible: secret:{hex64}:{contract_id}:{issuer_fp}"
 )]
 struct Cli {
     /// Server base URL. Per-flavor; default ports in
@@ -234,9 +234,9 @@ fn main() -> Result<()> {
         Flavor::Check { tokens } => run_check(&server, tokens),
         Flavor::Burn { secret } => run_burn(&server, &secret),
         Flavor::MiningReport { preimage } => run_mining_report(&server, &preimage),
-        Flavor::DerivePublic { .. }
-        | Flavor::Verify { .. }
-        | Flavor::Completions { .. } => unreachable!("handled above"),
+        Flavor::DerivePublic { .. } | Flavor::Verify { .. } | Flavor::Completions { .. } => {
+            unreachable!("handled above")
+        }
     }
 }
 
@@ -342,8 +342,13 @@ fn run_webcash(server: &str, cmd: WebcashCmd) -> Result<()> {
             wallet.pay(&inputs, &outputs).context("webcash pay")?;
             println!("ok: replaced {} → {}", inputs.len(), outputs.len());
         }
-        WebcashCmd::Insert { received, rotate_to } => {
-            wallet.insert(&received, &rotate_to).context("webcash insert")?;
+        WebcashCmd::Insert {
+            received,
+            rotate_to,
+        } => {
+            wallet
+                .insert(&received, &rotate_to)
+                .context("webcash insert")?;
             println!("ok: rotated received secret → wallet-owned");
         }
     }
@@ -357,7 +362,10 @@ fn run_rgb(server: &str, cmd: RgbCmd) -> Result<()> {
             wallet.transfer(&inputs, &outputs).context("rgb transfer")?;
             println!("ok: replaced {} → {}", inputs.len(), outputs.len());
         }
-        RgbCmd::Insert { received, rotate_to } => {
+        RgbCmd::Insert {
+            received,
+            rotate_to,
+        } => {
             wallet.insert(&received, &rotate_to).context("rgb insert")?;
             println!("ok: rotated received secret → wallet-owned");
         }
@@ -372,8 +380,13 @@ fn run_voucher(server: &str, cmd: VoucherCmd) -> Result<()> {
             wallet.pay(&inputs, &outputs).context("voucher pay")?;
             println!("ok: replaced {} → {}", inputs.len(), outputs.len());
         }
-        VoucherCmd::Insert { received, rotate_to } => {
-            wallet.insert(&received, &rotate_to).context("voucher insert")?;
+        VoucherCmd::Insert {
+            received,
+            rotate_to,
+        } => {
+            wallet
+                .insert(&received, &rotate_to)
+                .context("voucher insert")?;
             println!("ok: rotated received secret → wallet-owned");
         }
     }
@@ -396,10 +409,14 @@ mod tests {
     fn webcash_pay_parses_comma_separated_lists() {
         let cli = Cli::try_parse_from([
             "webyca",
-            "--server", "http://x:8080",
-            "webcash", "pay",
-            "--inputs", "e1.0:secret:aaa,e2.0:secret:bbb",
-            "--outputs", "e0.5:secret:ccc,e2.5:secret:ddd",
+            "--server",
+            "http://x:8080",
+            "webcash",
+            "pay",
+            "--inputs",
+            "e1.0:secret:aaa,e2.0:secret:bbb",
+            "--outputs",
+            "e0.5:secret:ccc,e2.5:secret:ddd",
         ])
         .expect("parse");
         match cli.flavor {
@@ -420,13 +437,21 @@ mod tests {
     fn rgb_transfer_namespaced_token_format() {
         let token = "e10.0:secret:aaa:rgb20:fffeeeddd";
         let cli = Cli::try_parse_from([
-            "webyca", "--server", "http://x", "rgb", "transfer",
-            "--inputs", token,
-            "--outputs", &format!("{token},e0.0:secret:zzz:rgb20:fffeeeddd"),
+            "webyca",
+            "--server",
+            "http://x",
+            "rgb",
+            "transfer",
+            "--inputs",
+            token,
+            "--outputs",
+            &format!("{token},e0.0:secret:zzz:rgb20:fffeeeddd"),
         ])
         .expect("parse");
         match cli.flavor {
-            Flavor::Rgb { cmd: RgbCmd::Transfer { inputs, outputs } } => {
+            Flavor::Rgb {
+                cmd: RgbCmd::Transfer { inputs, outputs },
+            } => {
                 assert_eq!(inputs, vec![token.to_string()]);
                 assert_eq!(outputs.len(), 2);
             }
@@ -437,13 +462,25 @@ mod tests {
     #[test]
     fn voucher_insert_pair() {
         let cli = Cli::try_parse_from([
-            "webyca", "--server", "http://x", "voucher", "insert",
-            "--received", "e10:secret:r:c:f",
-            "--rotate-to", "e10:secret:n:c:f",
+            "webyca",
+            "--server",
+            "http://x",
+            "voucher",
+            "insert",
+            "--received",
+            "e10:secret:r:c:f",
+            "--rotate-to",
+            "e10:secret:n:c:f",
         ])
         .expect("parse");
         match cli.flavor {
-            Flavor::Voucher { cmd: VoucherCmd::Insert { received, rotate_to } } => {
+            Flavor::Voucher {
+                cmd:
+                    VoucherCmd::Insert {
+                        received,
+                        rotate_to,
+                    },
+            } => {
                 assert_eq!(received, "e10:secret:r:c:f");
                 assert_eq!(rotate_to, "e10:secret:n:c:f");
             }
@@ -455,9 +492,15 @@ mod tests {
     #[test]
     fn server_flag_works_after_subcommand() {
         let cli = Cli::try_parse_from([
-            "webyca", "webcash", "pay",
-            "--server", "http://post:8080",
-            "--inputs", "x", "--outputs", "y",
+            "webyca",
+            "webcash",
+            "pay",
+            "--server",
+            "http://post:8080",
+            "--inputs",
+            "x",
+            "--outputs",
+            "y",
         ])
         .expect("parse");
         assert_eq!(cli.server.as_deref(), Some("http://post:8080"));
@@ -477,23 +520,25 @@ mod tests {
 
     #[test]
     fn target_subcommand_is_flavor_agnostic() {
-        let cli = Cli::try_parse_from(["webyca", "--server", "http://x", "target"])
-            .expect("parse");
+        let cli = Cli::try_parse_from(["webyca", "--server", "http://x", "target"]).expect("parse");
         assert!(matches!(cli.flavor, Flavor::Target));
     }
 
     #[test]
     fn stats_subcommand_is_flavor_agnostic() {
-        let cli = Cli::try_parse_from(["webyca", "--server", "http://x", "stats"])
-            .expect("parse");
+        let cli = Cli::try_parse_from(["webyca", "--server", "http://x", "stats"]).expect("parse");
         assert!(matches!(cli.flavor, Flavor::Stats));
     }
 
     #[test]
     fn check_subcommand_takes_comma_separated_tokens() {
         let cli = Cli::try_parse_from([
-            "webyca", "--server", "http://x", "check",
-            "--tokens", "e1:public:aaa,e2:public:bbb",
+            "webyca",
+            "--server",
+            "http://x",
+            "check",
+            "--tokens",
+            "e1:public:aaa,e2:public:bbb",
         ])
         .expect("parse");
         match cli.flavor {
@@ -508,8 +553,12 @@ mod tests {
     #[test]
     fn burn_subcommand_takes_single_secret() {
         let cli = Cli::try_parse_from([
-            "webyca", "--server", "http://x", "burn",
-            "--secret", "e1.0:secret:deadbeef",
+            "webyca",
+            "--server",
+            "http://x",
+            "burn",
+            "--secret",
+            "e1.0:secret:deadbeef",
         ])
         .expect("parse");
         match cli.flavor {
@@ -521,8 +570,12 @@ mod tests {
     #[test]
     fn mining_report_subcommand_takes_preimage() {
         let cli = Cli::try_parse_from([
-            "webyca", "--server", "http://x", "mining-report",
-            "--preimage", "{\"webcash\":[],\"subsidy\":[],\"timestamp\":1,\"difficulty\":4,\"nonce\":0}",
+            "webyca",
+            "--server",
+            "http://x",
+            "mining-report",
+            "--preimage",
+            "{\"webcash\":[],\"subsidy\":[],\"timestamp\":1,\"difficulty\":4,\"nonce\":0}",
         ])
         .expect("parse");
         match cli.flavor {
@@ -535,8 +588,10 @@ mod tests {
     #[test]
     fn derive_public_does_not_require_server() {
         let cli = Cli::try_parse_from([
-            "webyca", "derive-public",
-            "--secret", "e1.0:secret:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "webyca",
+            "derive-public",
+            "--secret",
+            "e1.0:secret:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         ])
         .expect("parse");
         match cli.flavor {
@@ -549,9 +604,12 @@ mod tests {
     #[test]
     fn verify_does_not_require_server() {
         let cli = Cli::try_parse_from([
-            "webyca", "verify",
-            "--secret", "e1.0:secret:abc",
-            "--public", "e1.0:public:def",
+            "webyca",
+            "verify",
+            "--secret",
+            "e1.0:secret:abc",
+            "--public",
+            "e1.0:public:def",
         ])
         .expect("parse");
         match cli.flavor {
@@ -613,8 +671,7 @@ mod tests {
 
     #[test]
     fn completions_subcommand_takes_shell_value() {
-        let cli = Cli::try_parse_from(["webyca", "completions", "bash"])
-            .expect("parse");
+        let cli = Cli::try_parse_from(["webyca", "completions", "bash"]).expect("parse");
         match cli.flavor {
             Flavor::Completions { shell } => assert_eq!(shell, Shell::Bash),
             _ => panic!("wrong arm"),
@@ -625,8 +682,7 @@ mod tests {
     #[test]
     fn completions_supports_zsh_fish_powershell() {
         for shell_name in ["zsh", "fish", "powershell"] {
-            let cli = Cli::try_parse_from(["webyca", "completions", shell_name])
-                .expect("parse");
+            let cli = Cli::try_parse_from(["webyca", "completions", shell_name]).expect("parse");
             assert!(matches!(cli.flavor, Flavor::Completions { .. }));
         }
     }
@@ -637,8 +693,7 @@ mod tests {
             .expect_err("unknown flavor must reject");
         assert!(matches!(
             err.kind(),
-            clap::error::ErrorKind::InvalidSubcommand
-                | clap::error::ErrorKind::UnknownArgument
+            clap::error::ErrorKind::InvalidSubcommand | clap::error::ErrorKind::UnknownArgument
         ));
     }
 }

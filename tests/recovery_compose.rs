@@ -22,11 +22,11 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
+use std::str::FromStr;
 use tempfile::TempDir;
+use webylib::amount::Amount;
 use webylib::hd::{ChainCode, HDWallet};
 use webylib::server::NetworkMode;
-use std::str::FromStr;
-use webylib::amount::Amount;
 use webylib::Wallet;
 
 const PORT: u16 = 8181;
@@ -190,7 +190,10 @@ async fn recover_after_mining_finds_all_outputs() {
     assert_eq!(unspent_count(&w).await, 0, "wipe must clear local store");
 
     let r = w.recover(&f.seed_hex, 5).await.expect("recover");
-    assert_eq!(r.recovered_count as u64, N, "must recover all mined outputs");
+    assert_eq!(
+        r.recovered_count as u64, N,
+        "must recover all mined outputs"
+    );
     let total = balance_wats(&w).await;
     let expected_per_token = Amount::from_str("1.0").unwrap().wats;
     assert_eq!(
@@ -218,7 +221,10 @@ async fn recover_after_mine_then_pay_finds_pay_and_change() {
     // Pull the mined token into local store via recovery so we have funds
     // to pay from. (Mining stores it on the server only.)
     let r0 = w.recover(&f.seed_hex, 5).await.expect("seed recover");
-    assert_eq!(r0.recovered_count, 1, "expected to find the one mined token");
+    assert_eq!(
+        r0.recovered_count, 1,
+        "expected to find the one mined token"
+    );
 
     // Pay 0.4 → recipient (PAY:0), 0.6 → CHANGE:0
     let pay_amount = Amount::from_str("0.4").unwrap();

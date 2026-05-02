@@ -565,8 +565,7 @@ impl Wallet {
                  SERVER_REPORTS_AMOUNT=true",
             );
             let amount = Amount::from_wats(amount_wats);
-            let webcash =
-                SecretWebcash::new(SecureString::new(output.secret_hex.clone()), amount);
+            let webcash = SecretWebcash::new(SecureString::new(output.secret_hex.clone()), amount);
             match self.store_directly(webcash).await {
                 Ok(()) => {
                     recovered_count += 1;

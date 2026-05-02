@@ -157,7 +157,10 @@ fn webcash_pay_and_insert_via_wallet() {
     //    for this self-test.
     let bob_secret = unique_secret(0x03);
     wallet
-        .insert(&format!("e0.6:secret:{change}"), &format!("e0.6:secret:{bob_secret}"))
+        .insert(
+            &format!("e0.6:secret:{change}"),
+            &format!("e0.6:secret:{bob_secret}"),
+        )
         .expect("insert");
 
     // Verify the original input is spent + Bob's new hash is unspent.
@@ -264,8 +267,14 @@ fn cross_namespace_replace_rejected_by_server_for_rgb() {
     // rejects with namespace mismatch.
     let issuer = "aabbccddeeff00112233445566778899aabbccdd";
     let result = wallet.transfer(
-        &[format!("e1.0:secret:{}:contract-A:{issuer}", "1".repeat(64))],
-        &[format!("e1.0:secret:{}:contract-B:{issuer}", "2".repeat(64))],
+        &[format!(
+            "e1.0:secret:{}:contract-A:{issuer}",
+            "1".repeat(64)
+        )],
+        &[format!(
+            "e1.0:secret:{}:contract-B:{issuer}",
+            "2".repeat(64)
+        )],
     );
     let err = result.expect_err("server must reject cross-namespace");
     assert!(

@@ -68,18 +68,20 @@ impl JsonStore {
     }
 
     fn flush(&self) -> StoreResult<()> {
-        let path = match self.path.lock().map_err(|e| {
-            StoreError::Backend(format!("path lock: {e}"))
-        })?.clone() {
+        let path = match self
+            .path
+            .lock()
+            .map_err(|e| StoreError::Backend(format!("path lock: {e}")))?
+            .clone()
+        {
             Some(p) => p,
             None => return Ok(()),
         };
         let json = self.to_json()?;
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    StoreError::Backend(format!("mkdir: {e}"))
-                })?;
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| StoreError::Backend(format!("mkdir: {e}")))?;
             }
         }
         std::fs::write(&path, json.as_bytes())
@@ -103,12 +105,7 @@ impl Store for JsonStore {
     fn get_all_meta(&self) -> StoreResult<std::collections::HashMap<String, String>> {
         self.inner.get_all_meta()
     }
-    fn insert_output(
-        &self,
-        secret_hash: &[u8],
-        secret: &str,
-        amount: i64,
-    ) -> StoreResult<()> {
+    fn insert_output(&self, secret_hash: &[u8], secret: &str, amount: i64) -> StoreResult<()> {
         self.inner.insert_output(secret_hash, secret, amount)?;
         self.flush()
     }

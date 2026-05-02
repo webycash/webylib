@@ -250,16 +250,16 @@ fn recover_rgb20_isolates_namespaces() {
 
     let client = Client::new(server_url(PORT_RGB));
     let hd = HdWallet::from_master_secret(seed);
-    let report_b = recover::<RgbFungible>(&client, &hd, &ns_b, 5, &HashMap::new())
-        .expect("recover B");
+    let report_b =
+        recover::<RgbFungible>(&client, &hd, &ns_b, 5, &HashMap::new()).expect("recover B");
     assert_eq!(
         report_b.count(),
         0,
         "namespace B must not see tokens minted under namespace A"
     );
 
-    let report_a = recover::<RgbFungible>(&client, &hd, &ns_a, 5, &HashMap::new())
-        .expect("recover A");
+    let report_a =
+        recover::<RgbFungible>(&client, &hd, &ns_a, 5, &HashMap::new()).expect("recover A");
     assert_eq!(report_a.count(), 1, "namespace A surfaces its own token");
 }
 
@@ -292,7 +292,11 @@ fn recover_voucher_finds_all_mined_in_namespace() {
     let hd = HdWallet::from_master_secret(seed);
     let report = recover::<Voucher>(&client, &hd, &ns, 5, &HashMap::new()).expect("recover");
 
-    assert_eq!(report.count() as u64, N, "voucher must surface mined outputs");
+    assert_eq!(
+        report.count() as u64,
+        N,
+        "voucher must surface mined outputs"
+    );
     assert_eq!(report.total_wats(), N as i64 * 100_000_000);
 }
 
@@ -322,9 +326,12 @@ fn recover_rgb21_returns_empty_for_unminted_namespace() {
 
     let client = Client::new(server_url(PORT_RGB_COLLECTIBLE));
     let hd = HdWallet::from_master_secret(seed);
-    let report =
-        recover::<RgbCollectible>(&client, &hd, &ns, 5, &HashMap::new()).expect("recover");
-    assert_eq!(report.count(), 0, "fresh namespace, no mints, must recover 0");
+    let report = recover::<RgbCollectible>(&client, &hd, &ns, 5, &HashMap::new()).expect("recover");
+    assert_eq!(
+        report.count(),
+        0,
+        "fresh namespace, no mints, must recover 0"
+    );
 }
 
 /// Mint-then-recover for RGB21.
@@ -365,8 +372,13 @@ fn recover_rgb21_after_signed_issue() {
     let redis_name = format!("recovery-rgb21-redis-{}", short_id());
     let redis_started = Command::new("docker")
         .args([
-            "run", "-d", "--rm", "--name", &redis_name,
-            "-p", &format!("{redis_port}:6379"),
+            "run",
+            "-d",
+            "--rm",
+            "--name",
+            &redis_name,
+            "-p",
+            &format!("{redis_port}:6379"),
             "redis:7-alpine",
         ])
         .stdout(Stdio::null())
@@ -540,14 +552,8 @@ fn recover_propagates_transport_errors_for_every_flavor() {
     let hd = HdWallet::from_master_secret(seed);
     let issuer = "f".repeat(40);
 
-    let webcash_err = recover::<Webcash>(
-        &Client::new(closed.clone()),
-        &hd,
-        &(),
-        5,
-        &HashMap::new(),
-    )
-    .unwrap_err();
+    let webcash_err =
+        recover::<Webcash>(&Client::new(closed.clone()), &hd, &(), 5, &HashMap::new()).unwrap_err();
     assert!(
         matches!(webcash_err, RecoveryError::Server { .. }),
         "webcash: {webcash_err:?}"

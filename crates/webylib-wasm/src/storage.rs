@@ -37,8 +37,8 @@ impl WeyMemWallet {
     #[wasm_bindgen(js_name = insertOutput)]
     pub fn insert_output(&self, secret_hex: &str, amount_wats: i64) -> Result<String, JsValue> {
         let public_hash_hex = hex::encode(Sha256::digest(secret_hex.as_bytes()));
-        let public_hash_bytes = hex::decode(&public_hash_hex)
-            .map_err(|e| JsValue::from_str(&format!("hex: {e}")))?;
+        let public_hash_bytes =
+            hex::decode(&public_hash_hex).map_err(|e| JsValue::from_str(&format!("hex: {e}")))?;
         self.store
             .insert_output(&public_hash_bytes, secret_hex, amount_wats)
             .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))?;
@@ -48,8 +48,8 @@ impl WeyMemWallet {
     /// Mark a secret spent by its public hash (40-hex SHA256(secret_hex)).
     #[wasm_bindgen(js_name = markSpent)]
     pub fn mark_spent(&self, public_hash_hex: &str) -> Result<(), JsValue> {
-        let bytes = hex::decode(public_hash_hex)
-            .map_err(|e| JsValue::from_str(&format!("hex: {e}")))?;
+        let bytes =
+            hex::decode(public_hash_hex).map_err(|e| JsValue::from_str(&format!("hex: {e}")))?;
         self.store
             .mark_spent(&bytes)
             .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))
@@ -151,8 +151,8 @@ impl WeyJsonWallet {
     #[wasm_bindgen(js_name = insertOutput)]
     pub fn insert_output(&self, secret_hex: &str, amount_wats: i64) -> Result<String, JsValue> {
         let public_hash_hex = hex::encode(Sha256::digest(secret_hex.as_bytes()));
-        let public_hash_bytes = hex::decode(&public_hash_hex)
-            .map_err(|e| JsValue::from_str(&format!("hex: {e}")))?;
+        let public_hash_bytes =
+            hex::decode(&public_hash_hex).map_err(|e| JsValue::from_str(&format!("hex: {e}")))?;
         self.store
             .insert_output(&public_hash_bytes, secret_hex, amount_wats)
             .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))?;
@@ -176,8 +176,8 @@ impl WeyJsonWallet {
 
     #[wasm_bindgen(js_name = markSpent)]
     pub fn mark_spent(&self, public_hash_hex: &str) -> Result<(), JsValue> {
-        let bytes = hex::decode(public_hash_hex)
-            .map_err(|e| JsValue::from_str(&format!("hex: {e}")))?;
+        let bytes =
+            hex::decode(public_hash_hex).map_err(|e| JsValue::from_str(&format!("hex: {e}")))?;
         self.store
             .mark_spent(&bytes)
             .map_err(|e: webylib_storage::StoreError| JsValue::from_str(&e.to_string()))

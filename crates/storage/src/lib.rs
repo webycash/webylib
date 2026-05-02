@@ -76,17 +76,17 @@ pub trait Store: Send + Sync {
     fn atomic(&self, f: &mut dyn FnMut(&dyn Store) -> StoreResult<()>) -> StoreResult<()>;
 }
 
-#[cfg(feature = "mem")]
-pub mod mem;
 #[cfg(feature = "json")]
 pub mod json;
+#[cfg(feature = "mem")]
+pub mod mem;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 
-#[cfg(feature = "mem")]
-pub use mem::MemStore;
 #[cfg(feature = "json")]
 pub use json::JsonStore;
+#[cfg(feature = "mem")]
+pub use mem::MemStore;
 #[cfg(feature = "sqlite")]
 pub use sqlite::SqliteStore;
 

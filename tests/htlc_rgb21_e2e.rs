@@ -122,8 +122,14 @@ impl RgbCollectibleServer {
         let redis_name = format!("webylib-rgb21-htlc-{seed:02x}-{}", short_id());
         let started = Command::new("docker")
             .args([
-                "run", "-d", "--rm", "--name", &redis_name, "-p",
-                &format!("{redis_port}:6379"), "redis:7-alpine",
+                "run",
+                "-d",
+                "--rm",
+                "--name",
+                &redis_name,
+                "-p",
+                &format!("{redis_port}:6379"),
+                "redis:7-alpine",
             ])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -255,10 +261,7 @@ fn rgb21_lock_and_claim_via_typed_client() {
     // Post-conditions.
     let body = client
         .health_check(&[
-            format!(
-                "public:{}:{contract}:{issuer}",
-                sha256_hex(&locked_secret)
-            ),
+            format!("public:{}:{contract}:{issuer}", sha256_hex(&locked_secret)),
             format!("public:{}:{contract}:{issuer}", sha256_hex(&bob_secret)),
         ])
         .expect("hc");

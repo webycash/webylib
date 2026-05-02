@@ -24,15 +24,25 @@ fn each_backend(test: impl Fn(&dyn Store, &str)) {
 #[test]
 fn meta_roundtrip_is_uniform() {
     each_backend(|s, name| {
-        s.set_meta("foo", "bar").unwrap_or_else(|e| panic!("[{name}] set: {e}"));
+        s.set_meta("foo", "bar")
+            .unwrap_or_else(|e| panic!("[{name}] set: {e}"));
         assert_eq!(
-            s.get_meta("foo").unwrap_or_else(|e| panic!("[{name}] get: {e}")),
+            s.get_meta("foo")
+                .unwrap_or_else(|e| panic!("[{name}] get: {e}")),
             Some("bar".into()),
             "[{name}] roundtrip"
         );
         s.set_meta("foo", "baz").unwrap();
-        assert_eq!(s.get_meta("foo").unwrap(), Some("baz".into()), "[{name}] overwrite");
-        assert_eq!(s.get_meta("missing").unwrap(), None, "[{name}] missing → None");
+        assert_eq!(
+            s.get_meta("foo").unwrap(),
+            Some("baz".into()),
+            "[{name}] overwrite"
+        );
+        assert_eq!(
+            s.get_meta("missing").unwrap(),
+            None,
+            "[{name}] missing → None"
+        );
     });
 }
 
@@ -66,7 +76,10 @@ fn duplicate_secret_hash_returns_constraint_on_every_backend() {
     each_backend(|s, name| {
         s.insert_output(&[7], "x", 10).unwrap();
         let err = s.insert_output(&[7], "y", 20).expect_err(name);
-        assert!(matches!(err, StoreError::Constraint(_)), "[{name}] not Constraint: {err:?}");
+        assert!(
+            matches!(err, StoreError::Constraint(_)),
+            "[{name}] not Constraint: {err:?}"
+        );
     });
 }
 

@@ -202,11 +202,17 @@ async fn webylib_speaks_to_server_webcash() {
     // 3. /api/v1/health_check — mined hash must be unspent.
     let secret = SecretWebcash::parse(&format!("e1.0:secret:{secret_hex}")).expect("secret");
     let public = secret.to_public();
-    let hc = client.health_check(std::slice::from_ref(&public)).await.expect("hc");
+    let hc = client
+        .health_check(std::slice::from_ref(&public))
+        .await
+        .expect("hc");
     assert_eq!(hc.status, "success");
     let key = format!("e1:public:{}", hex::encode(public.hash));
     let result = hc.results.get(&key).unwrap_or_else(|| {
-        panic!("missing key {key} in {:?}", hc.results.keys().collect::<Vec<_>>())
+        panic!(
+            "missing key {key} in {:?}",
+            hc.results.keys().collect::<Vec<_>>()
+        )
     });
     assert_eq!(result.spent, Some(false), "expected unspent");
 

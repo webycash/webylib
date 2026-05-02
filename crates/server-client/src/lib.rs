@@ -211,8 +211,8 @@ impl Client {
     /// `POST /api/v1/health_check` — bare-array body of public tokens.
     /// Returns the raw response body (caller parses).
     pub fn health_check(&self, public_tokens: &[String]) -> ClientResult<String> {
-        let body = serde_json::to_string(public_tokens)
-            .map_err(|e| ClientError::Encode(e.to_string()))?;
+        let body =
+            serde_json::to_string(public_tokens).map_err(|e| ClientError::Encode(e.to_string()))?;
         self.post_raw(&self.endpoint("/api/v1/health_check"), &body)
     }
 
@@ -261,8 +261,7 @@ impl Client {
     }
 
     fn post_raw(&self, url: &str, body: &str) -> ClientResult<String> {
-        let resp = http_post(url, body, None)
-            .map_err(|e| ClientError::Transport(e.to_string()))?;
+        let resp = http_post(url, body, None).map_err(|e| ClientError::Transport(e.to_string()))?;
         let (status, body) = parse_resp(&resp);
         if !(200..300).contains(&status) {
             return Err(ClientError::Http { status, body });
@@ -271,8 +270,7 @@ impl Client {
     }
 
     fn post_signed(&self, url: &str, body: &[u8], sig_hex: &str) -> ClientResult<()> {
-        let body_str =
-            std::str::from_utf8(body).map_err(|e| ClientError::Encode(e.to_string()))?;
+        let body_str = std::str::from_utf8(body).map_err(|e| ClientError::Encode(e.to_string()))?;
         let resp = http_post(url, body_str, Some(("X-Issuer-Signature", sig_hex)))
             .map_err(|e| ClientError::Transport(e.to_string()))?;
         let (status, body) = parse_resp(&resp);
@@ -350,20 +348,17 @@ mod tests {
         let c1 = Client::new("http://x:1");
         let c2 = Client::new("http://x:1/");
         // Same path appended in both shapes.
-        assert_eq!(
-            c1.endpoint("/api/v1/replace"),
-            "http://x:1/api/v1/replace"
-        );
-        assert_eq!(
-            c2.endpoint("/api/v1/replace"),
-            "http://x:1/api/v1/replace"
-        );
+        assert_eq!(c1.endpoint("/api/v1/replace"), "http://x:1/api/v1/replace");
+        assert_eq!(c2.endpoint("/api/v1/replace"), "http://x:1/api/v1/replace");
     }
 
     #[test]
     fn endpoint_accepts_https_base() {
         let c = Client::new("https://webcash.org");
-        assert_eq!(c.endpoint("/api/v1/target"), "https://webcash.org/api/v1/target");
+        assert_eq!(
+            c.endpoint("/api/v1/target"),
+            "https://webcash.org/api/v1/target"
+        );
     }
 
     #[test]

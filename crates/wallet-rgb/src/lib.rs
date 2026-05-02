@@ -157,11 +157,7 @@ impl RgbWallet {
     /// Wire format is asset-flavor-specific; caller passes pre-formatted
     /// secret tokens (e.g. `e25.0:secret:{hex}:{contract}:{issuer}` or
     /// `secret:{hex}:{contract}:{issuer}` for collectible).
-    pub fn transfer(
-        &self,
-        inputs: &[String],
-        outputs: &[String],
-    ) -> WalletResult<()> {
+    pub fn transfer(&self, inputs: &[String], outputs: &[String]) -> WalletResult<()> {
         if inputs.is_empty() {
             return Err(WalletError::Invariant("transfer requires ≥1 input"));
         }
@@ -206,15 +202,20 @@ mod tests {
         let ns = IssuedNamespace::new("rgb20-usdc", "AABBCCDDEEFF00112233445566778899AABBCCDD");
         let token = RgbFungible::public_token_for_lookup(&"a".repeat(64), &ns);
         assert!(token.starts_with("e1:public:"));
-        assert!(token.ends_with(":rgb20-usdc:aabbccddeeff00112233445566778899aabbccdd"),
-            "issuer fp lower-cased per protocol freeze, got {token}");
+        assert!(
+            token.ends_with(":rgb20-usdc:aabbccddeeff00112233445566778899aabbccdd"),
+            "issuer fp lower-cased per protocol freeze, got {token}"
+        );
     }
 
     #[test]
     fn rgb21_token_format_drops_amount_segment() {
         let ns = IssuedNamespace::new("rgb21-tickets", "1".repeat(40));
         let token = RgbCollectible::public_token_for_lookup(&"b".repeat(64), &ns);
-        assert!(token.starts_with("public:"), "rgb21 has no amount segment, got {token}");
+        assert!(
+            token.starts_with("public:"),
+            "rgb21 has no amount segment, got {token}"
+        );
     }
 
     #[test]
@@ -228,7 +229,8 @@ mod tests {
 
     #[test]
     fn rgb21_extract_hash_round_trip() {
-        let key = "public:fbe98164f16e9af34434388e9ac8e9efa286188dedd0f7218e1d9a578b7c3f73:nft-set:1234";
+        let key =
+            "public:fbe98164f16e9af34434388e9ac8e9efa286188dedd0f7218e1d9a578b7c3f73:nft-set:1234";
         assert_eq!(
             RgbCollectible::extract_hash_from_response_key(key),
             Some("fbe98164f16e9af34434388e9ac8e9efa286188dedd0f7218e1d9a578b7c3f73")
