@@ -110,8 +110,7 @@ impl HdWallet {
     /// Generate a wallet with a fresh random 32-byte master secret.
     pub fn new() -> HdResult<Self> {
         let mut bytes = [0u8; 32];
-        getrandom::getrandom(&mut bytes)
-            .map_err(|e| HdError::InvalidHex(format!("rng: {e}")))?;
+        getrandom::getrandom(&mut bytes).map_err(|e| HdError::InvalidHex(format!("rng: {e}")))?;
         Ok(Self::from_master_secret(bytes))
     }
 

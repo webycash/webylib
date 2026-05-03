@@ -171,8 +171,7 @@ impl Wallet {
 
         let hd_wallet = self.hd_wallet()?;
         let depth = self.read_chain_depth("RECEIVE")?;
-        let new_secret_hex = hd_wallet
-            .derive_secret(crate::hd::ChainCode::Receive, depth);
+        let new_secret_hex = hd_wallet.derive_secret(crate::hd::ChainCode::Receive, depth);
         let new_webcash = SecretWebcash::new(SecureString::new(new_secret_hex), webcash.amount);
 
         if validate_with_server {
@@ -277,14 +276,12 @@ impl Wallet {
         let pay_depth = self.read_chain_depth("PAY")?;
         let change_depth = self.read_chain_depth("CHANGE")?;
 
-        let pay_secret = hd_wallet
-            .derive_secret(crate::hd::ChainCode::Pay, pay_depth);
+        let pay_secret = hd_wallet.derive_secret(crate::hd::ChainCode::Pay, pay_depth);
         let payment_webcash = SecretWebcash::new(SecureString::new(pay_secret), amount);
         let mut new_webcashes = vec![payment_webcash.to_string()];
 
         let change_webcash = if change_amount > Amount::ZERO {
-            let change_secret = hd_wallet
-                .derive_secret(crate::hd::ChainCode::Change, change_depth);
+            let change_secret = hd_wallet.derive_secret(crate::hd::ChainCode::Change, change_depth);
             let cw = SecretWebcash::new(SecureString::new(change_secret), change_amount);
             new_webcashes.push(cw.to_string());
             Some(cw)
@@ -437,8 +434,7 @@ impl Wallet {
 
         let hd_wallet = self.hd_wallet()?;
         let change_depth = self.read_chain_depth("CHANGE")?;
-        let change_secret_hex = hd_wallet
-            .derive_secret(crate::hd::ChainCode::Change, change_depth);
+        let change_secret_hex = hd_wallet.derive_secret(crate::hd::ChainCode::Change, change_depth);
         let consolidated_webcash =
             SecretWebcash::new(SecureString::new(change_secret_hex), total_amount);
 
@@ -508,11 +504,11 @@ impl Wallet {
         master_secret_hex: &str,
         gap_limit: usize,
     ) -> Result<RecoveryResult> {
-        use std::collections::HashMap;
         use crate::core::ChainCode as CoreChain;
         use crate::hd::HdWallet as CoreHd;
         use crate::server_client::Client as CoreClient;
         use crate::wallet_webcash::Webcash;
+        use std::collections::HashMap;
 
         log::info!("Starting wallet recovery with gap_limit={}", gap_limit);
 
@@ -617,8 +613,7 @@ impl Wallet {
         };
 
         let depth = self.store.get_depth(chain_name)?;
-        let secret_hex = hd_wallet
-            .derive_secret(chain_code, depth);
+        let secret_hex = hd_wallet.derive_secret(chain_code, depth);
         self.store.set_depth(chain_name, depth + 1)?;
 
         Ok((secret_hex, depth))

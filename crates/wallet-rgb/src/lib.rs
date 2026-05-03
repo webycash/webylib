@@ -19,9 +19,9 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-use thiserror::Error;
 use crate::core::{IssuedNamespace, WalletAsset};
 use crate::server_client::{Client, ClientError};
+use thiserror::Error;
 
 /// Zero-sized asset marker for the RGB20 (fungible) flavor. Wire format:
 /// `e{amt}:public:{hash}:{contract_id}:{issuer_fp}`. Splittable.

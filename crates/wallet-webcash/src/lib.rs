@@ -14,9 +14,9 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-use thiserror::Error;
 use crate::core::WalletAsset;
 use crate::server_client::{Client, ClientError};
+use thiserror::Error;
 
 /// Zero-sized asset marker for `WalletAsset` impls. Use to parameterise
 /// asset-generic wallet ops over the Webcash flavor:

@@ -176,8 +176,7 @@ async fn test_cross_wallet_hd_recovery_integration() {
     master_secret_array.copy_from_slice(&master_secret_bytes);
     let hd_wallet = HDWallet::from_master_secret(master_secret_array);
 
-    let pay_secret_hex = hd_wallet
-        .derive_secret(ChainCode::Pay, 0);
+    let pay_secret_hex = hd_wallet.derive_secret(ChainCode::Pay, 0);
 
     let payment_webcash = SecretWebcash::new(
         crate::webcash::SecureString::new(pay_secret_hex),
@@ -826,11 +825,9 @@ async fn test_phase2_all_operations() {
 
     let hd_wallet = HDWallet::from_master_secret(master_secret_array);
 
-    let _receive_secret = hd_wallet
-        .derive_secret(ChainCode::Receive, 0);
+    let _receive_secret = hd_wallet.derive_secret(ChainCode::Receive, 0);
 
-    let _pay_secret = hd_wallet
-        .derive_secret(ChainCode::Pay, 0);
+    let _pay_secret = hd_wallet.derive_secret(ChainCode::Pay, 0);
 
     let recovery_wallet_path = "phase2_recovery_wallet.db";
     let _ = fs::remove_file(recovery_wallet_path);

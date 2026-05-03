@@ -37,22 +37,22 @@ pub mod server;
 pub mod webcash;
 
 // ── Sub-crate modules (source lives in crates/*/src/) ───────────
-#[path = "../crates/storage/src/lib.rs"]
-pub mod storage;
-#[path = "../crates/proto-client/src/lib.rs"]
-pub mod proto_client;
 #[path = "../crates/auth/src/lib.rs"]
 pub mod auth;
-#[path = "../crates/server-client/src/lib.rs"]
-pub mod server_client;
 #[path = "../crates/webylib-core/src/lib.rs"]
 pub mod core;
-#[path = "../crates/wallet-webcash/src/lib.rs"]
-pub mod wallet_webcash;
+#[path = "../crates/proto-client/src/lib.rs"]
+pub mod proto_client;
+#[path = "../crates/server-client/src/lib.rs"]
+pub mod server_client;
+#[path = "../crates/storage/src/lib.rs"]
+pub mod storage;
 #[path = "../crates/wallet-rgb/src/lib.rs"]
 pub mod wallet_rgb;
 #[path = "../crates/wallet-voucher/src/lib.rs"]
 pub mod wallet_voucher;
+#[path = "../crates/wallet-webcash/src/lib.rs"]
+pub mod wallet_webcash;
 
 // ── Native-only (SQLite, tokio, reqwest, keyring) ───────────────
 #[cfg(feature = "ffi")]

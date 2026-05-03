@@ -120,9 +120,7 @@ impl RecoveryFixture {
 fn mine_at_depth(fixture: &RecoveryFixture, depth: u64, amount: &str, subsidy: &str) {
     use webylib::server_client::Client;
 
-    let secret = fixture
-        .hd()
-        .derive_secret(ChainCode::Mining, depth);
+    let secret = fixture.hd().derive_secret(ChainCode::Mining, depth);
     // Subsidy secret must also be unique; derive a deterministic one from
     // the mining secret so re-runs against the same server collide cleanly
     // (the server rejects duplicate subsidy hashes).
