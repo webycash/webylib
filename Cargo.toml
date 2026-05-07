@@ -13,7 +13,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.19"
+version = "0.3.20"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT"
@@ -24,7 +24,7 @@ repository = "https://github.com/webycash/webylib"
 # Proc-macro crate (published separately — proc-macro crates must be standalone)
 webylib-macros = { path = "crates/macros", version = "0.3" }
 # Root webylib crate (used by non-published workspace members)
-webylib = { path = ".", version = "0.3.19", default-features = false }
+webylib = { path = ".", version = "0.3.20", default-features = false }
 
 # Pinned versions for shared deps
 serde = { version = "1.0", features = ["derive"] }
@@ -38,7 +38,7 @@ proptest = "1"
 
 [package]
 name = "webylib"
-version = "0.3.19"
+version = "0.3.20"
 edition = "2021"
 rust-version = "1.85"
 description = "Webcash HD wallet library — bearer e-cash with BIP32-style key derivation, SQLite storage, AES-256-GCM encryption, and full C FFI for cross-platform SDKs"

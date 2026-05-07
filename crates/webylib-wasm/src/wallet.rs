@@ -293,7 +293,7 @@ pub fn wallet_prepare_pay(
 
     // Select inputs (largest first)
     let mut unspent: Vec<_> = state.outputs.iter().filter(|o| !o.spent).collect();
-    unspent.sort_by(|a, b| b.amount.cmp(&a.amount));
+    unspent.sort_by_key(|b| std::cmp::Reverse(b.amount));
 
     let mut selected = Vec::new();
     let mut total: i64 = 0;

@@ -174,7 +174,7 @@ impl Store for MemStore {
             .map(|e| (e.secret.clone(), e.amount))
             .collect();
         // Match legacy behaviour: ORDER BY amount DESC.
-        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.sort_by_key(|b| std::cmp::Reverse(b.1));
         Ok(v)
     }
 
