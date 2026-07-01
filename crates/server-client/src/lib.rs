@@ -300,30 +300,37 @@ fn http_send(
     body: &str,
     extra: Option<(&str, &str)>,
 ) -> std::io::Result<String> {
-    use std::io::{Read, Write};
-    let after = url.strip_prefix("http://").unwrap_or(url);
-    let (host_port, path) = after
-        .split_once('/')
-        .map(|(h, p)| (h.to_string(), format!("/{p}")))
-        .unwrap_or((after.to_string(), "/".into()));
-    let mut s = std::net::TcpStream::connect(&host_port)?;
-    s.set_read_timeout(Some(std::time::Duration::from_secs(15)))?;
-    let extra_hdr = match extra {
-        Some((k, v)) if !v.is_empty() => format!("{k}: {v}\r\n"),
-        _ => String::new(),
-    };
-    let req = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {host_port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n",
-        body.len(),
-        extra_hdr,
-    );
-    s.write_all(req.as_bytes())?;
-    if !body.is_empty() {
-        s.write_all(body.as_bytes())?;
+    // HTTP+HTTPS via ureq (rustls). The previous hand-rolled TcpStream transport
+    // was plain-HTTP only — it mis-parsed `https://` (splitting on the `//` gave
+    // host="https:" → "invalid port value") and did no TLS, so the live rails
+    // (Cloudflare, HTTPS) were unreachable.
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(30))
+        .build();
+    let mut req = agent
+        .request(method, url)
+        .set("Content-Type", "application/json");
+    if let Some((k, v)) = extra {
+        if !v.is_empty() {
+            req = req.set(k, v);
+        }
     }
-    let mut buf = Vec::new();
-    s.read_to_end(&mut buf)?;
-    Ok(String::from_utf8_lossy(&buf).to_string())
+    let result = if body.is_empty() {
+        req.call()
+    } else {
+        req.send_string(body)
+    };
+    let resp = match result {
+        Ok(r) => r,
+        // Non-2xx still yields a Response — keep it so `parse_resp` surfaces the
+        // real status + body (the callers classify 4xx/5xx themselves).
+        Err(ureq::Error::Status(_, r)) => r,
+        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
+    };
+    let status = resp.status();
+    let text = resp.into_string()?;
+    // Synthesize the minimal raw response `parse_resp` reads (status line + body).
+    Ok(format!("HTTP/1.1 {status} OK\r\n\r\n{text}"))
 }
 
 fn parse_resp(raw: &str) -> (u16, String) {
