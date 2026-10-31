@@ -15,6 +15,7 @@ pub mod idb;
 pub mod operations;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod schema;
+pub mod slot_scan;
 pub mod snapshot;
 pub mod store;
 
@@ -31,6 +32,7 @@ use crate::passkey::{EncryptionConfig, PasskeyEncryption};
 use std::sync::Mutex;
 
 pub use operations::{CheckResult, RecoveryResult, WalletStats};
+pub use slot_scan::{scan_slots, ActiveSlot, SlotCandidate};
 pub use snapshot::{SpentHashSnapshot, UnspentOutputSnapshot, WalletSnapshot};
 pub use store::Store;
 
