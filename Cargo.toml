@@ -124,6 +124,16 @@ dirs-next = { version = "2", optional = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 ureq = { version = "2", default-features = false, features = ["tls"] }
 
+# wasm32-unknown-unknown has no OS randomness: the always-on deps (uuid v4,
+# getrandom 0.2/0.3) get the browser `crypto.getRandomValues` backend, so the
+# no-feature crate (server-client wire protocol, token types) builds for wasm
+# consumers such as extro-node without pulling the `wasm` feature's
+# reqwest/web-sys stack.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+getrandom_0_3 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+uuid = { version = "1.0", features = ["v4", "js"] }
+
 [dev-dependencies]
 tempfile = "3.0"
 mockito = "1.7.0"

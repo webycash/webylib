@@ -39,6 +39,10 @@ pub mod webcash;
 // ── Sub-crate modules (source lives in crates/*/src/) ───────────
 #[path = "../crates/auth/src/lib.rs"]
 pub mod auth;
+// Recovery + per-flavor wallets drive the blocking `server_client::Client`
+// (native transport); `wasm32` consumers use `server_client::wire` through
+// their own async transport instead.
+#[cfg(not(target_arch = "wasm32"))]
 #[path = "../crates/webylib-core/src/lib.rs"]
 pub mod core;
 #[path = "../crates/proto-client/src/lib.rs"]
@@ -47,10 +51,13 @@ pub mod proto_client;
 pub mod server_client;
 #[path = "../crates/storage/src/lib.rs"]
 pub mod storage;
+#[cfg(not(target_arch = "wasm32"))]
 #[path = "../crates/wallet-rgb/src/lib.rs"]
 pub mod wallet_rgb;
+#[cfg(not(target_arch = "wasm32"))]
 #[path = "../crates/wallet-voucher/src/lib.rs"]
 pub mod wallet_voucher;
+#[cfg(not(target_arch = "wasm32"))]
 #[path = "../crates/wallet-webcash/src/lib.rs"]
 pub mod wallet_webcash;
 
