@@ -4,6 +4,7 @@
 #![cfg(feature = "native")]
 
 use mockito::Matcher;
+use std::str::FromStr;
 use webylib::server::NetworkMode;
 use webylib::wallet::Wallet;
 use webylib::webcash::SecretWebcash;
@@ -137,4 +138,153 @@ async fn recover_scans_over_the_async_client() {
         w.recover(&"11".repeat(32), 0).await.is_err(),
         "zero gap fails closed"
     );
+}
+
+const MASTER: &str = "22222222222222222222222222222222222222222222222222222222222222aa";
+
+async fn seeded_wallet(server: &mockito::Server) -> Wallet {
+    let w = wallet(server).await;
+    w.store_master_secret(MASTER).await.unwrap();
+    w
+}
+
+fn depth(w: &Wallet, chain: &str) -> i64 {
+    w.export_snapshot()
+        .unwrap()
+        .depths
+        .get(chain)
+        .copied()
+        .unwrap_or(0)
+}
+
+#[tokio::test]
+async fn pay_webcash_returns_the_payment_token_and_keeps_change() {
+    let mut server = mockito::Server::new_async().await;
+    let replace = server
+        .mock("POST", "/api/v1/replace")
+        .match_header("content-type", "text/plain;charset=UTF-8")
+        .with_body(r#"{"status": "success"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let w = seeded_wallet(&server).await;
+    w.store_directly(SecretWebcash::parse(&format!("e3:secret:{SECRET}")).unwrap())
+        .await
+        .unwrap();
+    let payment = w
+        .pay_webcash(webylib::Amount::from_str("1").unwrap(), "")
+        .await
+        .expect("pay");
+    replace.assert_async().await;
+    assert_eq!(payment.amount.to_string(), "1");
+    assert_eq!(w.balance().await.unwrap(), "2");
+    assert_eq!(depth(&w, "PAY"), 1);
+    // The token is not kept by the payer.
+    let held: Vec<String> = w
+        .list_webcash()
+        .await
+        .unwrap()
+        .iter()
+        .map(|t| t.to_string())
+        .collect();
+    assert!(!held.contains(&payment.to_string()));
+}
+
+#[tokio::test]
+async fn pay_webcash_leaves_wallet_untouched_when_replace_fails() {
+    let mut server = mockito::Server::new_async().await;
+    server
+        .mock("POST", "/api/v1/replace")
+        .with_status(500)
+        .with_body("boom")
+        .create_async()
+        .await;
+    let w = seeded_wallet(&server).await;
+    w.store_directly(SecretWebcash::parse(&format!("e3:secret:{SECRET}")).unwrap())
+        .await
+        .unwrap();
+    assert!(w
+        .pay_webcash(webylib::Amount::from_str("1").unwrap(), "")
+        .await
+        .is_err());
+    assert_eq!(w.balance().await.unwrap(), "3");
+    assert_eq!(depth(&w, "PAY"), 0);
+}
+
+fn target(bits: u32, subsidy: &str) -> webylib::server::TargetResponse {
+    webylib::server_client::wire::parse_target(
+        200,
+        format!(
+            r#"{{"difficulty_target_bits":{bits},"epoch":1,"mining_amount":"200","mining_subsidy_amount":"{subsidy}","ratio":1}}"#
+        )
+        .as_bytes(),
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn mine_batch_without_solution_changes_nothing() {
+    let mut server = mockito::Server::new_async().await;
+    let report = server
+        .mock("POST", "/api/v1/mining_report")
+        .expect(0)
+        .create_async()
+        .await;
+    let w = seeded_wallet(&server).await;
+    let b = w
+        .mine_batch(&target(255, "0"), 1_700_000_000, 0, 50)
+        .await
+        .unwrap();
+    assert_eq!(b.attempted, 50);
+    assert!(b.result.is_none());
+    assert_eq!(depth(&w, "MINING"), 0);
+    assert_eq!(w.balance().await.unwrap(), "0");
+    report.assert_async().await;
+}
+
+#[tokio::test]
+async fn mine_batch_reports_preimage_then_stores_hd_mining_webcash() {
+    let mut server = mockito::Server::new_async().await;
+    let report = server
+        .mock("POST", "/api/v1/mining_report")
+        .match_header("content-type", "text/plain;charset=UTF-8")
+        .match_body(Matcher::Regex(r#""preimage""#.into()))
+        .with_body(r#"{"status":"success","difficulty_target":4}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let w = seeded_wallet(&server).await;
+    let b = w
+        .mine_batch(&target(4, "50"), 1_700_000_000, 0, 1_000_000)
+        .await
+        .unwrap();
+    report.assert_async().await;
+    let r = b.result.expect("difficulty 4 is found");
+    assert!(r.preimage.contains(&r.webcash));
+    assert!(r.subsidy.as_deref().is_some_and(|s| r.preimage.contains(s)));
+    assert_eq!(depth(&w, "MINING"), 2, "webcash + subsidy secrets reserved");
+    assert_eq!(w.balance().await.unwrap(), "200");
+    // The kept secret is the HD MINING chain secret at depth 0.
+    let hd =
+        webylib::hd::HdWallet::from_master_secret(hex::decode(MASTER).unwrap().try_into().unwrap());
+    let expected = hd.derive_secret(webylib::hd::ChainCode::Mining, 0);
+    assert_eq!(r.webcash, format!("e200:secret:{expected}"));
+}
+
+#[tokio::test]
+async fn mine_batch_rejected_report_burns_secrets_but_stores_nothing() {
+    let mut server = mockito::Server::new_async().await;
+    server
+        .mock("POST", "/api/v1/mining_report")
+        .with_status(400)
+        .with_body(r#"{"error":"Didn't use a new secret"}"#)
+        .create_async()
+        .await;
+    let w = seeded_wallet(&server).await;
+    assert!(w
+        .mine_batch(&target(4, "0"), 1_700_000_000, 0, 1_000_000)
+        .await
+        .is_err());
+    assert_eq!(depth(&w, "MINING"), 1, "a secret is never offered twice");
+    assert_eq!(w.balance().await.unwrap(), "0");
 }

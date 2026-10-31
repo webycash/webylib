@@ -1,3 +1,6 @@
+//! Webcash proof-of-work: the sans-IO [`Work`] search, shared by
+//! [`crate::wallet::Wallet::mine_batch`] (every target) and the native [`mine`] loop.
+//!
 //! Light CPU miner for testnet usage.
 //!
 //! This module provides a minimal, non-optimized SHA256 miner suitable for
@@ -20,14 +23,14 @@
 
 use sha2::{Digest, Sha256};
 
-use crate::error::{Error, Result};
-use crate::hd::ChainCode;
-use crate::server::{Legalese, MiningReportRequest};
+#[cfg(feature = "native")]
+use crate::error::Result;
+#[cfg(feature = "native")]
 use crate::wallet::Wallet;
-use crate::webcash::SecretWebcash;
 use crate::Amount;
 
 /// Result of a successful mining operation.
+#[derive(Debug, Clone)]
 pub struct MineResult {
     /// The mined webcash secret (already stored in wallet).
     pub webcash: String,
@@ -43,8 +46,80 @@ pub struct MineResult {
     pub amount: Amount,
 }
 
+/// Outcome of one bounded nonce search ([`crate::wallet::Wallet::mine_batch`]).
+#[derive(Debug, Clone)]
+pub struct MineBatch {
+    /// Nonces hashed in this batch.
+    pub attempted: u64,
+    /// Difficulty the batch searched against.
+    pub difficulty: u32,
+    /// Miner reward per solution at this target.
+    pub mining_amount: Amount,
+    /// `Some` when a solution was found, reported and stored.
+    pub result: Option<MineResult>,
+}
+
+/// A found proof-of-work solution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Solution {
+    /// The preimage JSON the server receives in the mining report.
+    pub preimage: String,
+    /// `sha256(preimage)`, hex.
+    pub hash_hex: String,
+    /// Leading zero bits of the hash.
+    pub achieved: u32,
+}
+
+/// The preimage fields fixed for one search (sans-IO).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Work {
+    /// `e{amount}:secret:{hex}` the miner keeps.
+    pub webcash: String,
+    /// Subsidy webcash surrendered to the server, if the target has one.
+    pub subsidy: Option<String>,
+    /// Unix seconds stamped into the preimage.
+    pub timestamp: u64,
+    /// Required leading zero bits.
+    pub difficulty: u32,
+}
+
+impl Work {
+    /// The preimage JSON for `nonce`.
+    pub fn preimage(&self, nonce: u64) -> String {
+        let subsidy = match &self.subsidy {
+            Some(s) => format!(r#"["{}"]"#, s),
+            None => "[]".to_string(),
+        };
+        format!(
+            r#"{{"webcash":["{}"],"subsidy":{},"timestamp":{},"difficulty":{},"nonce":{}}}"#,
+            self.webcash, subsidy, self.timestamp, self.difficulty, nonce
+        )
+    }
+
+    /// Hash nonces `start..start + max_attempts`; returns how many were hashed
+    /// and the first solution, if any.
+    pub fn search(&self, start: u64, max_attempts: u64) -> (u64, Option<Solution>) {
+        for i in 0..max_attempts {
+            let preimage = self.preimage(start.wrapping_add(i));
+            let hash = Sha256::digest(preimage.as_bytes());
+            let achieved = leading_zero_bits(&hash);
+            if achieved >= self.difficulty {
+                return (
+                    i + 1,
+                    Some(Solution {
+                        preimage,
+                        hash_hex: hex::encode(hash),
+                        achieved,
+                    }),
+                );
+            }
+        }
+        (max_attempts, None)
+    }
+}
+
 /// Count leading zero bits in a SHA256 hash.
-fn leading_zero_bits(hash: &[u8]) -> u32 {
+pub fn leading_zero_bits(hash: &[u8]) -> u32 {
     let mut count = 0u32;
     for byte in hash {
         if *byte == 0 {
@@ -57,106 +132,85 @@ fn leading_zero_bits(hash: &[u8]) -> u32 {
     count
 }
 
-/// Mine webcash using the wallet's server client and HD derivation.
+/// Mine until a solution is found, reported and stored.
 ///
-/// 1. Fetches current mining target from the server.
-/// 2. Derives a mining secret from the wallet's HD chain.
-/// 3. Iterates SHA256 hashes until a solution meets the difficulty target.
-/// 4. Submits the mining report to the server.
-/// 5. Stores the mined webcash in the wallet.
-///
-/// This is a light CPU miner — not optimized, intended for testnet only.
+/// Fetches the target once, then runs [`crate::wallet::Wallet::mine_batch`] over a running
+/// nonce with the current clock. Light CPU miner, intended for testnet.
+#[cfg(feature = "native")]
 pub async fn mine(wallet: &Wallet) -> Result<MineResult> {
-    // 1. Get mining target from server
-    let target = {
-        let server = wallet.server_client.lock().await;
-        server.get_target().await?
-    };
-
-    let difficulty = target.difficulty_target_bits;
-    let mining_amount_str = &target.mining_amount;
-    let subsidy_amount_str = &target.mining_subsidy_amount;
-
-    let mining_amount_f64: f64 = mining_amount_str
-        .parse()
-        .map_err(|_| Error::wallet(format!("invalid mining amount: {}", mining_amount_str)))?;
-    let mining_amount = Amount::from_webcash(mining_amount_f64)?;
-
-    // 2. Derive mining secrets from HD wallet
-    let (mining_secret_hex, _mining_depth) = wallet.derive_next_secret(ChainCode::Mining)?;
-    let webcash_str = format!("e{}:secret:{}", mining_amount_str, mining_secret_hex);
-
-    // Derive subsidy secret if subsidy > 0
-    let subsidy_amount_f64: f64 = subsidy_amount_str.parse().unwrap_or(0.0);
-    let subsidy_amount = Amount::from_webcash(subsidy_amount_f64)?;
-    let subsidy_str = if !subsidy_amount.is_zero() {
-        let (subsidy_secret_hex, _) = wallet.derive_next_secret(ChainCode::Mining)?;
-        Some(format!(
-            "e{}:secret:{}",
-            subsidy_amount_str, subsidy_secret_hex
-        ))
-    } else {
-        None
-    };
-
-    // 3. Mine: iterate timestamps until SHA256(preimage) has enough leading zeros
+    const BATCH: u64 = 10_000;
+    let target = wallet.server_get_target().await?;
     let mut nonce: u64 = 0;
-    let preimage_str;
-    let hash_hex;
-
     loop {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| Error::wallet(format!("system time error: {}", e)))?
+            .map_err(|e| crate::error::Error::wallet(format!("system time error: {}", e)))?
             .as_secs();
+        let batch = wallet.mine_batch(&target, timestamp, nonce, BATCH).await?;
+        if let Some(result) = batch.result {
+            return Ok(result);
+        }
+        nonce = nonce.wrapping_add(batch.attempted);
+        tokio::task::yield_now().await;
+    }
+}
 
-        // Build preimage JSON
-        let subsidy_array = match &subsidy_str {
-            Some(s) => format!(r#"["{}"]"#, s),
-            None => "[]".to_string(),
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn work(difficulty: u32) -> Work {
+        Work {
+            webcash: "e1:secret:00".into(),
+            subsidy: None,
+            timestamp: 1_700_000_000,
+            difficulty,
+        }
+    }
+
+    #[test]
+    fn preimage_is_the_server_report_shape() {
+        let w = Work {
+            subsidy: Some("e0.5:secret:11".into()),
+            ..work(3)
         };
-
-        let candidate = format!(
-            r#"{{"webcash":["{}"],"subsidy":{},"timestamp":{},"difficulty":{},"nonce":{}}}"#,
-            webcash_str, subsidy_array, timestamp, difficulty, nonce
+        assert_eq!(
+            w.preimage(7),
+            r#"{"webcash":["e1:secret:00"],"subsidy":["e0.5:secret:11"],"timestamp":1700000000,"difficulty":3,"nonce":7}"#
         );
-
-        let hash = Sha256::digest(candidate.as_bytes());
-        if leading_zero_bits(&hash) >= difficulty {
-            preimage_str = candidate;
-            hash_hex = hex::encode(hash);
-            break;
-        }
-
-        nonce += 1;
-
-        // Yield to runtime periodically to avoid blocking
-        if nonce % 10_000 == 0 {
-            tokio::task::yield_now().await;
-        }
+        assert_eq!(
+            work(3).preimage(0),
+            r#"{"webcash":["e1:secret:00"],"subsidy":[],"timestamp":1700000000,"difficulty":3,"nonce":0}"#
+        );
     }
 
-    // 4. Submit mining report to server
-    let report = MiningReportRequest {
-        preimage: preimage_str.clone(),
-        legalese: Legalese { terms: true },
-    };
-
-    {
-        let server = wallet.server_client.lock().await;
-        server.submit_mining_report(&report).await?;
+    #[test]
+    fn search_returns_first_solution_meeting_difficulty() {
+        let w = work(8);
+        let (attempted, sol) = w.search(0, 1_000_000);
+        let sol = sol.expect("difficulty 8 is found well within 1e6 nonces");
+        assert!(sol.achieved >= 8);
+        assert_eq!(sol.preimage, w.preimage(attempted - 1));
+        assert_eq!(
+            sol.hash_hex,
+            hex::encode(Sha256::digest(sol.preimage.as_bytes()))
+        );
+        // No earlier nonce met the target.
+        let (_, none) = w.search(0, attempted - 1);
+        assert!(none.is_none());
     }
 
-    // 5. Store the mined webcash directly (no /replace needed — we own the HD-derived secret)
-    let secret = SecretWebcash::parse(&webcash_str)?;
-    wallet.store_directly(secret).await?;
+    #[test]
+    fn search_is_bounded() {
+        let (attempted, sol) = work(255).search(5, 100);
+        assert_eq!(attempted, 100);
+        assert!(sol.is_none());
+    }
 
-    Ok(MineResult {
-        webcash: webcash_str,
-        subsidy: subsidy_str,
-        preimage: preimage_str,
-        hash: hash_hex,
-        difficulty,
-        amount: mining_amount,
-    })
+    #[test]
+    fn leading_zero_bits_counts_bits() {
+        assert_eq!(leading_zero_bits(&[0, 0, 0x0f, 0xff]), 20);
+        assert_eq!(leading_zero_bits(&[0x80]), 0);
+        assert_eq!(leading_zero_bits(&[0, 0]), 16);
+    }
 }

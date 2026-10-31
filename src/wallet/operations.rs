@@ -245,7 +245,20 @@ impl Wallet {
 // ── Pay ─────────────────────────────────────────────────────────────
 
 impl Wallet {
+    /// Pay `amount`; returns the human-readable receipt carrying the
+    /// payment webcash. Callers that need the token use [`Self::pay_webcash`].
     pub async fn pay(&self, amount: Amount, memo: &str) -> Result<String> {
+        let payment_webcash = self.pay_webcash(amount, memo).await?;
+        Ok(format!(
+            "Payment completed! Send this webcash to recipient: {}",
+            payment_webcash
+        ))
+    }
+
+    /// Pay `amount` and return the payment webcash (HD PAY chain secret) for
+    /// the recipient. Inputs are marked spent and change is stored only after
+    /// the server's `/replace` succeeds.
+    pub async fn pay_webcash(&self, amount: Amount, memo: &str) -> Result<SecretWebcash> {
         log::info!("Starting payment: amount={}, memo={}", amount, memo);
 
         let hd_wallet = self.hd_wallet()?;
@@ -305,10 +318,7 @@ impl Wallet {
             Ok(())
         })?;
 
-        Ok(format!(
-            "Payment completed! Send this webcash to recipient: {}",
-            payment_webcash
-        ))
+        Ok(payment_webcash)
     }
 
     async fn select_inputs(&self, amount: Amount) -> Result<Vec<SecretWebcash>> {
@@ -591,9 +601,79 @@ impl Wallet {
         Ok((secret_hex, depth))
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "native")]
     pub async fn mine(&self) -> Result<crate::miner::MineResult> {
         crate::miner::mine(self).await
+    }
+
+    /// One bounded proof-of-work search against `target` (from
+    /// [`Self::server_get_target`]), on every target including wasm32.
+    ///
+    /// The webcash (and subsidy) secrets come from the HD MINING chain at
+    /// the current depth; the depth is only advanced once a solution is
+    /// found, and before the report is sent, so a secret is never offered to
+    /// the server twice. The mined webcash is stored only after the server
+    /// accepts the report. A batch without a solution leaves the wallet
+    /// unchanged.
+    pub async fn mine_batch(
+        &self,
+        target: &crate::server::TargetResponse,
+        timestamp: u64,
+        start_nonce: u64,
+        max_attempts: u64,
+    ) -> Result<crate::miner::MineBatch> {
+        let mining_amount = Amount::from_str(&target.mining_amount)
+            .map_err(|e| Error::wallet(format!("invalid mining amount: {e}")))?;
+        let subsidy_amount = Amount::from_str(&target.mining_subsidy_amount)
+            .map_err(|e| Error::wallet(format!("invalid subsidy amount: {e}")))?;
+        let hd_wallet = self.hd_wallet()?;
+        let depth = self.read_chain_depth("MINING")?;
+        let webcash = SecretWebcash::new(
+            SecureString::new(hd_wallet.derive_secret(crate::hd::ChainCode::Mining, depth)),
+            mining_amount,
+        );
+        let subsidy = (!subsidy_amount.is_zero()).then(|| {
+            SecretWebcash::new(
+                SecureString::new(hd_wallet.derive_secret(crate::hd::ChainCode::Mining, depth + 1)),
+                subsidy_amount,
+            )
+        });
+        let used = if subsidy.is_some() { 2 } else { 1 };
+        let work = crate::miner::Work {
+            webcash: webcash.to_string(),
+            subsidy: subsidy.as_ref().map(|s| s.to_string()),
+            timestamp,
+            difficulty: target.difficulty_target_bits,
+        };
+        let (attempted, solution) = work.search(start_nonce, max_attempts);
+        let batch = |result| crate::miner::MineBatch {
+            attempted,
+            difficulty: target.difficulty_target_bits,
+            mining_amount,
+            result,
+        };
+        let Some(solution) = solution else {
+            return Ok(batch(None));
+        };
+
+        // Reserve the secrets before they leave the wallet.
+        self.store.set_depth("MINING", depth + used)?;
+        let report = crate::server::MiningReportRequest {
+            preimage: solution.preimage.clone(),
+            legalese: Legalese { terms: true },
+        };
+        self.server_submit_mining_report(&report).await?;
+        // We own the HD-derived secret, so no /replace is needed.
+        self.store_directly(webcash).await?;
+
+        Ok(batch(Some(crate::miner::MineResult {
+            webcash: work.webcash,
+            subsidy: work.subsidy,
+            preimage: solution.preimage,
+            hash: solution.hash_hex,
+            difficulty: target.difficulty_target_bits,
+            amount: mining_amount,
+        })))
     }
 }
 

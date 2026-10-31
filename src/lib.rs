@@ -63,7 +63,7 @@ pub mod wallet_webcash;
 // ── Native-only (SQLite, tokio, reqwest, keyring) ───────────────
 #[cfg(feature = "ffi")]
 pub mod ffi;
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm"))]
 pub mod miner;
 #[cfg(feature = "native")]
 pub mod passkey;

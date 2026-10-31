@@ -357,7 +357,7 @@ impl Wallet {
                 .as_any()
                 .downcast_ref::<store::mem::MemStore>()
                 .ok_or_else(|| Error::wallet("Store does not support JSON serialization"))?;
-            return mem.to_json();
+            mem.to_json()
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
