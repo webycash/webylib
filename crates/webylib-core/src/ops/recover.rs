@@ -32,36 +32,17 @@
 
 use std::collections::HashMap;
 
-use serde::Deserialize;
-
 use crate::hd::{ChainCode, HdWallet};
+#[cfg(not(target_arch = "wasm32"))]
 use crate::server_client::Client;
+use crate::server_client::{ClientError, TokenStatus};
 
 use crate::core::asset::WalletAsset;
 use crate::core::recovery::{RecoveredOutput, RecoveryError, RecoveryReport};
 
-/// Server's `/api/v1/health_check` response envelope. Keys mirror the
-/// (normalised) input wire shape; values are per-token status.
-#[derive(Debug, Deserialize)]
-struct HealthEnvelope {
-    #[serde(default)]
-    #[allow(dead_code)]
-    status: String,
-    results: HashMap<String, HealthEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct HealthEntry {
-    /// `true` = spent, `false` = unspent, `null` = unknown.
-    spent: Option<bool>,
-    /// Stored amount as a decimal string (`"1"`, `"0.4"`, …). Present
-    /// when `spent == Some(false)`; `null` when spent or unknown.
-    #[serde(default)]
-    amount: Option<String>,
-}
-
-/// Walk the four HD chains, recovering everything the server reports
-/// `spent: false` for under the wallet's seed.
+/// Walk the four HD chains over the blocking native [`Client`], recovering
+/// everything the server reports `spent: false` for under the wallet's seed.
+/// Async transports drive the same [`RecoveryScan`] themselves.
 ///
 /// `reported_depths` is the wallet's own state of `(chain, depth)` —
 /// recovery uses it to widen the search window when the wallet
@@ -71,6 +52,7 @@ struct HealthEntry {
 /// On success the [`RecoveryReport`] carries every recovered output
 /// (in chain-then-depth encounter order) and the highest used depth
 /// the scan saw on each chain.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn recover<A: WalletAsset>(
     client: &Client,
     hd: &HdWallet,
@@ -78,139 +60,186 @@ pub fn recover<A: WalletAsset>(
     gap_limit: u64,
     reported_depths: &HashMap<ChainCode, u64>,
 ) -> Result<RecoveryReport<A>, RecoveryError> {
-    if gap_limit == 0 {
-        return Err(RecoveryError::InvalidGapLimit);
+    let mut scan = RecoveryScan::<A>::new(hd, namespace, gap_limit, reported_depths)?;
+    while let Some(lookup) = scan.next_lookup() {
+        let statuses = client
+            .health_check_status(&lookup)
+            .map_err(|e| scan.server_error(e))?;
+        scan.apply(&statuses)?;
     }
-
-    let mut report = RecoveryReport::<A>::empty();
-
-    for &chain in &ChainCode::ALL {
-        scan_chain::<A>(
-            client,
-            hd,
-            namespace,
-            chain,
-            gap_limit,
-            reported_depths.get(&chain).copied().unwrap_or(0),
-            &mut report,
-        )?;
-    }
-
-    Ok(report)
+    Ok(scan.finish())
 }
 
-/// Walk a single chain. Pulled out so it can be exercised in isolation
-/// by per-chain tests without setting up all four chains.
-fn scan_chain<A: WalletAsset>(
-    client: &Client,
-    hd: &HdWallet,
-    namespace: &A::Namespace,
-    chain: ChainCode,
+/// One derived candidate awaiting its `/health_check` answer.
+struct Candidate {
+    secret_hex: String,
+    depth: u64,
+}
+
+/// Sans-IO recovery state machine: yields `/health_check` lookups and
+/// consumes the typed answers ([`crate::server_client::wire::parse_health_check`]),
+/// so every transport (blocking native, async reqwest, browser fetch) shares
+/// one HD walk, one gap-limit rule and one error path.
+///
+/// Protocol: `while let Some(tokens) = scan.next_lookup() { scan.apply(&statuses_for(tokens))? }`
+/// then [`RecoveryScan::finish`]. Statuses must be in lookup order.
+pub struct RecoveryScan<'a, A: WalletAsset> {
+    hd: &'a HdWallet,
+    namespace: &'a A::Namespace,
     gap_limit: u64,
-    reported_depth: u64,
-    report: &mut RecoveryReport<A>,
-) -> Result<(), RecoveryError> {
-    // Per-batch state.
-    let mut current_depth = 0u64;
-    let mut consecutive_empty: u64 = 0;
-    let mut chain_max_used: Option<u64> = None;
+    reported_depths: &'a HashMap<ChainCode, u64>,
+    chain_idx: usize,
+    current_depth: u64,
+    consecutive_empty: u64,
+    chain_max_used: Option<u64>,
+    pending: Option<Vec<Candidate>>,
+    report: RecoveryReport<A>,
+}
 
-    loop {
-        // Build the batch of (secret, hash, public_token) triples for
-        // this gap_limit window.
-        let mut by_hash: HashMap<String, (String, u64)> = HashMap::new();
-        let mut publics: Vec<String> = Vec::with_capacity(gap_limit as usize);
-        for offset in 0..gap_limit {
-            let depth = current_depth + offset;
-            let secret_hex = hd.derive_secret(chain, depth);
-            let public = A::public_token_for_lookup(&secret_hex, namespace);
-            // Compute the hash from the secret to key this batch's
-            // lookup map. Matches the server-side hash function for
-            // every flavor (sha256 of the ASCII secret hex).
-            let hash = sha256_hex_of_ascii(&secret_hex);
-            by_hash.insert(hash, (secret_hex, depth));
-            publics.push(public);
+impl<'a, A: WalletAsset> RecoveryScan<'a, A> {
+    /// Start a scan. `gap_limit == 0` ⇒ [`RecoveryError::InvalidGapLimit`].
+    pub fn new(
+        hd: &'a HdWallet,
+        namespace: &'a A::Namespace,
+        gap_limit: u64,
+        reported_depths: &'a HashMap<ChainCode, u64>,
+    ) -> Result<Self, RecoveryError> {
+        if gap_limit == 0 {
+            return Err(RecoveryError::InvalidGapLimit);
+        }
+        Ok(Self {
+            hd,
+            namespace,
+            gap_limit,
+            reported_depths,
+            chain_idx: 0,
+            current_depth: 0,
+            consecutive_empty: 0,
+            chain_max_used: None,
+            pending: None,
+            report: RecoveryReport::<A>::empty(),
+        })
+    }
+
+    fn chain(&self) -> Option<ChainCode> {
+        ChainCode::ALL.get(self.chain_idx).copied()
+    }
+
+    /// Public tokens of the next `gap_limit` window, or `None` once every
+    /// chain is exhausted. Calling it again before [`Self::apply`] re-yields
+    /// the same window.
+    pub fn next_lookup(&mut self) -> Option<Vec<String>> {
+        let chain = self.chain()?;
+        let candidates = self.pending.get_or_insert_with(|| {
+            (0..self.gap_limit)
+                .map(|offset| Candidate {
+                    secret_hex: self.hd.derive_secret(chain, self.current_depth + offset),
+                    depth: self.current_depth + offset,
+                })
+                .collect()
+        });
+        Some(
+            candidates
+                .iter()
+                .map(|c| A::public_token_for_lookup(&c.secret_hex, self.namespace))
+                .collect(),
+        )
+    }
+
+    /// Wrap a transport failure with the chain/depth it aborted at.
+    pub fn server_error(&self, source: ClientError) -> RecoveryError {
+        RecoveryError::Server {
+            chain: self.chain().map_or("done", |c| c.as_str()),
+            depth: self.current_depth,
+            source,
+        }
+    }
+
+    /// Consume the statuses for the window [`Self::next_lookup`] yielded.
+    /// Fail-closed: a count mismatch, an answer with no pending lookup, or an
+    /// unspent amount-bearing token without an amount aborts recovery.
+    pub fn apply(&mut self, statuses: &[TokenStatus]) -> Result<(), RecoveryError> {
+        let chain = self
+            .chain()
+            .ok_or_else(|| RecoveryError::Decode("apply after scan finished".into()))?;
+        let candidates = self
+            .pending
+            .take()
+            .ok_or_else(|| RecoveryError::Decode("apply without a pending lookup".into()))?;
+        if statuses.len() != candidates.len() {
+            return Err(RecoveryError::Decode(format!(
+                "{chain:?}@{}: {} statuses for {} lookups",
+                self.current_depth,
+                statuses.len(),
+                candidates.len()
+            )));
         }
 
-        // Server round trip — propagate any error loudly.
-        let raw = client
-            .health_check(&publics)
-            .map_err(|source| RecoveryError::Server {
-                chain: chain.as_str(),
-                depth: current_depth,
-                source,
-            })?;
-        let env: HealthEnvelope = serde_json::from_str(&raw)
-            .map_err(|e| RecoveryError::Decode(format!("{chain:?}@{current_depth}: {e}")))?;
-
-        // Reconcile each response entry against the batch.
         let mut batch_had_hit = false;
-        for (resp_key, entry) in &env.results {
-            let Some(hash) = A::extract_hash_from_response_key(resp_key) else {
-                continue;
+        for (cand, status) in candidates.iter().zip(statuses) {
+            let amount = match status {
+                TokenStatus::Unknown => continue,
+                TokenStatus::Spent { .. } => None,
+                TokenStatus::Unspent { amount } => Some(amount),
             };
-            let Some((secret_hex, depth)) = by_hash.get(hash) else {
-                continue;
+            // Anything but unknown means the server saw this depth used.
+            batch_had_hit = true;
+            self.chain_max_used = Some(
+                self.chain_max_used
+                    .map_or(cand.depth, |d| d.max(cand.depth)),
+            );
+            let Some(amount) = amount else { continue };
+            let amount_wats = if A::SERVER_REPORTS_AMOUNT {
+                let s = amount.as_deref().ok_or_else(|| {
+                    RecoveryError::Decode(format!(
+                        "{chain:?}@{}: server reported spent: false without amount",
+                        cand.depth
+                    ))
+                })?;
+                Some(
+                    parse_decimal_to_wats(s)
+                        .map_err(|e| RecoveryError::Decode(format!("amount: {e}")))?,
+                )
+            } else {
+                // Asset has no amount semantics (e.g. RGB21).
+                None
             };
-            // Anything but `spent: null` means the server saw this
-            // hash before; mark the depth as used.
-            if entry.spent.is_some() {
-                batch_had_hit = true;
-                chain_max_used = Some(chain_max_used.map_or(*depth, |d| d.max(*depth)));
-            }
-            if entry.spent == Some(false) {
-                let amount_wats = if A::SERVER_REPORTS_AMOUNT {
-                    let parsed = entry
-                        .amount
-                        .as_deref()
-                        .map(parse_decimal_to_wats)
-                        .transpose()
-                        .map_err(|e| RecoveryError::Decode(format!("amount: {e}")))?
-                        .ok_or_else(|| {
-                            RecoveryError::Decode(format!(
-                                "{chain:?}@{depth}: server reported spent: false without amount"
-                            ))
-                        })?;
-                    Some(parsed)
-                } else {
-                    // Asset has no amount semantics (e.g. RGB21):
-                    // the server's `/health_check` response carries no
-                    // `amount` field by design.
-                    None
-                };
-                report.recovered.push(RecoveredOutput {
-                    secret_hex: secret_hex.clone(),
-                    hash: hash.to_string(),
-                    amount_wats,
-                    chain,
-                    depth: *depth,
-                    namespace: namespace.clone(),
-                });
-            }
+            self.report.recovered.push(RecoveredOutput {
+                secret_hex: cand.secret_hex.clone(),
+                hash: sha256_hex_of_ascii(&cand.secret_hex),
+                amount_wats,
+                chain,
+                depth: cand.depth,
+                namespace: self.namespace.clone(),
+            });
         }
 
-        // Termination: stop once we've seen a full gap_limit window
-        // with no hit, AND we've passed any reported depth the wallet
-        // remembers using on this chain.
+        // Termination: stop once a full gap_limit window had no hit AND we
+        // are past any depth the wallet remembers using on this chain.
         if batch_had_hit {
-            consecutive_empty = 0;
+            self.consecutive_empty = 0;
         } else {
-            consecutive_empty = consecutive_empty.saturating_add(gap_limit);
+            self.consecutive_empty = self.consecutive_empty.saturating_add(self.gap_limit);
         }
-
-        let next_depth = current_depth.saturating_add(gap_limit);
-        let past_reported = next_depth > reported_depth;
-
-        if !batch_had_hit && consecutive_empty >= gap_limit && past_reported {
-            break;
+        let next_depth = self.current_depth.saturating_add(self.gap_limit);
+        let reported = self.reported_depths.get(&chain).copied().unwrap_or(0);
+        if !batch_had_hit && self.consecutive_empty >= self.gap_limit && next_depth > reported {
+            if let Some(d) = self.chain_max_used.take() {
+                self.report.last_used_depth.insert(chain, d);
+            }
+            self.chain_idx += 1;
+            self.current_depth = 0;
+            self.consecutive_empty = 0;
+        } else {
+            self.current_depth = next_depth;
         }
-        current_depth = next_depth;
+        Ok(())
     }
 
-    if let Some(d) = chain_max_used {
-        report.last_used_depth.insert(chain, d);
+    /// The report. Call once [`Self::next_lookup`] returned `None`.
+    pub fn finish(self) -> RecoveryReport<A> {
+        self.report
     }
-    Ok(())
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -271,6 +300,144 @@ fn parse_decimal_to_wats(s: &str) -> Result<i64, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Minimal amount-bearing asset for driving the scan without I/O.
+    #[derive(Debug, Clone)]
+    struct Coin;
+    impl WalletAsset for Coin {
+        const NAME: &'static str = "coin";
+        type Namespace = ();
+        const SERVER_REPORTS_AMOUNT: bool = true;
+        fn public_token_for_lookup(secret_hex: &str, _ns: &()) -> String {
+            format!("e1:public:{}", sha256_hex_of_ascii(secret_hex))
+        }
+        fn extract_hash_from_response_key(key: &str) -> Option<&str> {
+            key.split(':').nth(2)
+        }
+    }
+
+    fn hd() -> HdWallet {
+        HdWallet::from_hex(&"11".repeat(32)).unwrap()
+    }
+
+    /// `(chain, window start depth, window length)` per `/health_check` call.
+    type Calls = Vec<(ChainCode, u64, usize)>;
+
+    /// Drive a scan with `answer(chain, depth) -> status`.
+    fn run(
+        gap: u64,
+        reported: &HashMap<ChainCode, u64>,
+        answer: impl Fn(ChainCode, u64) -> TokenStatus,
+    ) -> Result<(RecoveryReport<Coin>, Calls), RecoveryError> {
+        let hd = hd();
+        let mut scan = RecoveryScan::<Coin>::new(&hd, &(), gap, reported)?;
+        let mut calls = Vec::new();
+        while let Some(lookup) = scan.next_lookup() {
+            let chain = scan.chain().unwrap();
+            let start = scan.current_depth;
+            calls.push((chain, start, lookup.len()));
+            let statuses: Vec<_> = (0..lookup.len() as u64)
+                .map(|i| answer(chain, start + i))
+                .collect();
+            scan.apply(&statuses)?;
+        }
+        Ok((scan.finish(), calls))
+    }
+
+    #[test]
+    fn scan_rejects_zero_gap() {
+        let hd = hd();
+        let m = HashMap::new();
+        assert!(matches!(
+            RecoveryScan::<Coin>::new(&hd, &(), 0, &m),
+            Err(RecoveryError::InvalidGapLimit)
+        ));
+    }
+
+    #[test]
+    fn empty_wallet_does_one_window_per_chain() {
+        let (report, calls) = run(5, &HashMap::new(), |_, _| TokenStatus::Unknown).unwrap();
+        assert_eq!(report.count(), 0);
+        assert_eq!(calls.len(), 4);
+        assert!(calls.iter().all(|(_, d, n)| *d == 0 && *n == 5));
+    }
+
+    #[test]
+    fn unspent_is_recovered_and_hits_extend_the_walk() {
+        let (report, calls) = run(3, &HashMap::new(), |chain, depth| match (chain, depth) {
+            (ChainCode::Receive, 1) => TokenStatus::Unspent {
+                amount: Some("0.4".into()),
+            },
+            (ChainCode::Receive, 4) => TokenStatus::Spent { amount: None },
+            _ => TokenStatus::Unknown,
+        })
+        .unwrap();
+        assert_eq!(report.count(), 1);
+        let out = &report.recovered[0];
+        assert_eq!(
+            (out.chain, out.depth, out.amount_wats),
+            (ChainCode::Receive, 1, Some(40_000_000))
+        );
+        assert_eq!(out.secret_hex, hd().derive_secret(ChainCode::Receive, 1));
+        assert_eq!(report.last_used_depth.get(&ChainCode::Receive), Some(&4));
+        // Receive: windows 0,3 hit; 6 empty ⇒ stop. Other chains: one window.
+        let receive: Vec<_> = calls
+            .iter()
+            .filter(|c| c.0 == ChainCode::Receive)
+            .map(|c| c.1)
+            .collect();
+        assert_eq!(receive, vec![0, 3, 6]);
+        assert_eq!(calls.len(), 6);
+    }
+
+    #[test]
+    fn reported_depth_widens_the_window() {
+        let mut m = HashMap::new();
+        m.insert(ChainCode::Pay, 7);
+        let (_, calls) = run(3, &m, |_, _| TokenStatus::Unknown).unwrap();
+        let pay: Vec<_> = calls
+            .iter()
+            .filter(|c| c.0 == ChainCode::Pay)
+            .map(|c| c.1)
+            .collect();
+        assert_eq!(pay, vec![0, 3, 6]);
+    }
+
+    #[test]
+    fn unspent_without_amount_fails_closed() {
+        let err = run(2, &HashMap::new(), |_, _| TokenStatus::Unspent {
+            amount: None,
+        })
+        .unwrap_err();
+        assert!(matches!(err, RecoveryError::Decode(_)), "{err:?}");
+    }
+
+    #[test]
+    fn status_count_mismatch_fails_closed() {
+        let hd = hd();
+        let m = HashMap::new();
+        let mut scan = RecoveryScan::<Coin>::new(&hd, &(), 3, &m).unwrap();
+        assert!(scan.apply(&[]).is_err(), "apply before next_lookup");
+        let lookup = scan.next_lookup().unwrap();
+        assert_eq!(
+            lookup,
+            scan.next_lookup().unwrap(),
+            "re-yields the pending window"
+        );
+        let err = scan.apply(&[TokenStatus::Unknown]).unwrap_err();
+        assert!(matches!(err, RecoveryError::Decode(_)));
+    }
+
+    #[test]
+    fn lookups_are_public_tokens_only() {
+        let hd = hd();
+        let m = HashMap::new();
+        let mut scan = RecoveryScan::<Coin>::new(&hd, &(), 4, &m).unwrap();
+        for t in scan.next_lookup().unwrap() {
+            assert!(crate::server_client::wire::public_hash(&t).is_some(), "{t}");
+            assert!(!t.contains("secret"));
+        }
+    }
 
     #[test]
     fn parse_decimal_handles_production_shapes() {

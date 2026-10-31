@@ -15,7 +15,9 @@
 #![warn(missing_docs)]
 
 use crate::core::WalletAsset;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::server_client::{Client, ClientError};
+#[cfg(not(target_arch = "wasm32"))]
 use thiserror::Error;
 
 /// Zero-sized asset marker for `WalletAsset` impls. Use to parameterise
@@ -64,6 +66,7 @@ impl WalletAsset for Webcash {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Failure modes from the wallet's verb methods.
 #[derive(Debug, Error)]
 pub enum WalletError {
@@ -77,10 +80,12 @@ pub enum WalletError {
     Invariant(&'static str),
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Convenience alias used across this crate for results from
 /// any `WebcashWallet` method.
 pub type WalletResult<T> = Result<T, WalletError>;
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Webcash specialisation of the asset-flavored wallet. Wraps a
 /// shared HTTP `Client` with the verbs `pay` (N→M with
 /// conservation) and `insert` (1:1 receive-and-rotate). Both map
@@ -89,6 +94,7 @@ pub struct WebcashWallet {
     client: Client,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl WebcashWallet {
     /// Construct a new wallet pointed at a running `server-webcash`.
     ///
@@ -141,7 +147,7 @@ impl WebcashWallet {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
 

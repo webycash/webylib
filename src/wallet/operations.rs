@@ -185,7 +185,7 @@ impl Wallet {
         };
 
         match self.server_replace(&replace_request).await {
-            Ok(resp) if resp.status == "success" => {
+            Ok(()) => {
                 log::info!("Server replacement successful — ownership transferred");
                 let new_secret_str = new_webcash
                     .secret
@@ -207,54 +207,38 @@ impl Wallet {
                 log::info!(
                     "Same-lineage secret webcash detected, storing directly without replace"
                 );
-                let public_webcash = webcash.to_public();
-                let health_response = self
-                    .server_health_check(std::slice::from_ref(&public_webcash))
-                    .await?;
-                if health_response.status != "success" {
-                    return Err(Error::server(
-                        "Health check failed for same-lineage fallback",
-                    ));
-                }
-                if let Some(hr) = health_response.results.get(&public_webcash.to_string()) {
-                    if hr.spent == Some(true) {
-                        return Err(Error::wallet("Input webcash has been spent"));
+                // Fail closed: store only what the server positively reports unspent.
+                match self.server_token_status(&webcash.to_public()).await? {
+                    TokenStatus::Unspent { .. } => self.store_directly(webcash).await,
+                    TokenStatus::Spent { .. } => Err(Error::wallet("Input webcash has been spent")),
+                    TokenStatus::Unknown => {
+                        Err(Error::wallet("Input webcash is unknown to the server"))
                     }
                 }
-                self.store_directly(webcash).await
             }
-            Ok(_) => Err(Error::server("Server replacement failed")),
             Err(e) => Err(e),
         }
     }
 
     async fn validate_input_webcash(&self, webcash: &SecretWebcash) -> Result<()> {
-        let public_webcash = webcash.to_public();
-        let health = self
-            .server_health_check(std::slice::from_ref(&public_webcash))
-            .await?;
-        if health.status != "success" {
-            return Err(Error::server("Server validation failed"));
-        }
-        if let Some(result) = health.results.get(&public_webcash.to_string()) {
-            if let Some(true) = result.spent {
-                return Err(Error::wallet("Input webcash has been spent"));
-            }
-            if let Some(ref server_amount) = result.amount {
-                let expected = Amount::from_str(server_amount).map_err(|_| {
-                    Error::wallet(format!("Invalid amount from server: {}", server_amount))
-                })?;
-                if webcash.amount != expected {
-                    return Err(Error::wallet(format!(
-                        "Amount mismatch: provided {}, server says {}",
-                        webcash.amount, expected
-                    )));
+        match self.server_token_status(&webcash.to_public()).await? {
+            TokenStatus::Spent { .. } => Err(Error::wallet("Input webcash has been spent")),
+            TokenStatus::Unknown => Err(Error::wallet("Input webcash is unknown to the server")),
+            TokenStatus::Unspent { amount } => {
+                if let Some(server_amount) = amount {
+                    let expected = Amount::from_str(&server_amount).map_err(|_| {
+                        Error::wallet(format!("Invalid amount from server: {}", server_amount))
+                    })?;
+                    if webcash.amount != expected {
+                        return Err(Error::wallet(format!(
+                            "Amount mismatch: provided {}, server says {}",
+                            webcash.amount, expected
+                        )));
+                    }
                 }
+                Ok(())
             }
-        } else {
-            return Err(Error::server("Input webcash not found in server response"));
         }
-        Ok(())
     }
 }
 
@@ -295,11 +279,7 @@ impl Wallet {
             legalese: Legalese { terms: true },
         };
 
-        let response = self.server_replace(&replace_request).await?;
-
-        if response.status != "success" {
-            return Err(Error::server("Payment transaction failed"));
-        }
+        self.server_replace(&replace_request).await?;
 
         // Atomic: mark inputs spent + store change + update depths
         let change_data = change_webcash.as_ref().map(|cw| {
@@ -385,25 +365,23 @@ impl Wallet {
             });
         }
 
-        let health_response = self.server_health_check(&public_webcash_list).await?;
-
-        if health_response.status != "success" {
-            return Err(Error::server("Server returned non-success status"));
-        }
+        let tokens: Vec<String> = public_webcash_list.iter().map(|w| w.to_string()).collect();
+        let statuses = self.server_health_check(&tokens).await?;
 
         let mut valid_count = 0;
         let mut spent_count = 0;
-        for health_result in health_response.results.values() {
-            if let Some(true) = health_result.spent {
-                spent_count += 1;
-            } else {
-                valid_count += 1;
+        let mut unknown_count = 0;
+        for status in &statuses {
+            match status {
+                TokenStatus::Unspent { .. } => valid_count += 1,
+                TokenStatus::Spent { .. } => spent_count += 1,
+                TokenStatus::Unknown => unknown_count += 1,
             }
         }
         Ok(CheckResult {
             valid_count,
             spent_count,
-            unknown_count: 0,
+            unknown_count,
         })
     }
 }
@@ -444,11 +422,7 @@ impl Wallet {
             legalese: Legalese { terms: true },
         };
 
-        let response = self.server_replace(&replace_request).await?;
-
-        if response.status != "success" {
-            return Err(Error::server("Consolidation transaction failed"));
-        }
+        self.server_replace(&replace_request).await?;
 
         let cs = consolidated_webcash
             .secret
@@ -504,23 +478,17 @@ impl Wallet {
         master_secret_hex: &str,
         gap_limit: usize,
     ) -> Result<RecoveryResult> {
-        use crate::core::ChainCode as CoreChain;
+        use crate::core::{ChainCode as CoreChain, RecoveryScan};
         use crate::hd::HdWallet as CoreHd;
-        use crate::server_client::Client as CoreClient;
         use crate::wallet_webcash::Webcash;
         use std::collections::HashMap;
 
         log::info!("Starting wallet recovery with gap_limit={}", gap_limit);
 
-        if gap_limit == 0 {
-            return Err(Error::wallet("gap_limit must be > 0"));
-        }
         let hd = CoreHd::from_hex(master_secret_hex)
             .map_err(|e| Error::wallet(format!("Invalid master secret: {e}")))?;
 
-        // Map our four chain codes onto the core enum's variants.
-        // (Both enums have identical wire semantics; the legacy chain
-        // *names* are the keys our SqliteStore persists.)
+        // The legacy chain *names* are the keys our store persists.
         let chain_codes: [(&str, CoreChain); 4] = [
             ("RECEIVE", CoreChain::Receive),
             ("PAY", CoreChain::Pay),
@@ -532,16 +500,19 @@ impl Wallet {
             reported_depths.insert(*code, self.store.get_depth(name)?);
         }
 
-        let base_url = self.network.base_url().to_string();
-        // The generic op is sync; run it on the blocking pool so we
-        // don't stall the async runtime on each /health_check call.
-        let report = tokio::task::spawn_blocking(move || {
-            let client = CoreClient::new(base_url);
-            crate::core::recover::<Webcash>(&client, &hd, &(), gap_limit as u64, &reported_depths)
-        })
-        .await
-        .map_err(|e| Error::wallet(format!("recover task: {e}")))?
-        .map_err(|e| Error::server(format!("recovery: {e}")))?;
+        // The asset-generic, sans-IO scan (shared with the native blocking
+        // driver); this wallet's async server client is the transport.
+        let mut scan = RecoveryScan::<Webcash>::new(&hd, &(), gap_limit as u64, &reported_depths)
+            .map_err(|e| Error::wallet(format!("recovery: {e}")))?;
+        while let Some(lookup) = scan.next_lookup() {
+            let statuses = self
+                .server_health_check(&lookup)
+                .await
+                .map_err(|e| e.with_context("recovery health_check"))?;
+            scan.apply(&statuses)
+                .map_err(|e| Error::server(format!("recovery: {e}")))?;
+        }
+        let report = scan.finish();
 
         // Persist what came back. `store_directly` handles the SQLite
         // single-use-seal "already exists" case by surfacing it as an
@@ -552,10 +523,11 @@ impl Wallet {
         for output in &report.recovered {
             // Webcash always carries amount; the trait's
             // SERVER_REPORTS_AMOUNT contract guarantees Some here.
-            let amount_wats = output.amount_wats.expect(
-                "Webcash recovery must produce Some(amount_wats); \
-                 SERVER_REPORTS_AMOUNT=true",
-            );
+            // `RecoveryScan::apply` fails closed on an unspent hit without an
+            // amount for `SERVER_REPORTS_AMOUNT` assets, so this is `Some`.
+            let amount_wats = output
+                .amount_wats
+                .ok_or_else(|| Error::server("recovery: unspent output without amount"))?;
             let amount = Amount::from_wats(amount_wats);
             let webcash = SecretWebcash::new(SecureString::new(output.secret_hex.clone()), amount);
             match self.store_directly(webcash).await {
@@ -629,33 +601,48 @@ impl Wallet {
 //
 // Abstract the Mutex (native) vs direct access (WASM) difference.
 
-use crate::server::{HealthResponse, ReplaceResponse};
+use crate::server_client::TokenStatus;
 
 impl Wallet {
     #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) async fn server_replace(&self, req: &ReplaceRequest) -> Result<ReplaceResponse> {
+    pub(crate) async fn server_replace(&self, req: &ReplaceRequest) -> Result<()> {
         self.server_client.lock().await.replace(req).await
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub(crate) async fn server_replace(&self, req: &ReplaceRequest) -> Result<ReplaceResponse> {
+    pub(crate) async fn server_replace(&self, req: &ReplaceRequest) -> Result<()> {
         self.server_client.replace(req).await
     }
 
+    /// Per-token server state of `public_tokens`, in request order.
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) async fn server_health_check(
         &self,
-        webcash: &[PublicWebcash],
-    ) -> Result<HealthResponse> {
-        self.server_client.lock().await.health_check(webcash).await
+        public_tokens: &[String],
+    ) -> Result<Vec<TokenStatus>> {
+        self.server_client
+            .lock()
+            .await
+            .health_check(public_tokens)
+            .await
     }
 
+    /// Per-token server state of `public_tokens`, in request order.
     #[cfg(target_arch = "wasm32")]
     pub(crate) async fn server_health_check(
         &self,
-        webcash: &[PublicWebcash],
-    ) -> Result<HealthResponse> {
-        self.server_client.health_check(webcash).await
+        public_tokens: &[String],
+    ) -> Result<Vec<TokenStatus>> {
+        self.server_client.health_check(public_tokens).await
+    }
+
+    /// Server state of one public webcash.
+    async fn server_token_status(&self, public: &PublicWebcash) -> Result<TokenStatus> {
+        let mut statuses = self.server_health_check(&[public.to_string()]).await?;
+        // `parse_health_check` guarantees one status per requested token.
+        statuses
+            .pop()
+            .ok_or_else(|| Error::server("health_check returned no status"))
     }
 
     pub async fn server_get_target(&self) -> Result<crate::server::TargetResponse> {

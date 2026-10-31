@@ -31,5 +31,7 @@ pub mod ops;
 pub mod recovery;
 
 pub use asset::{ChainCode, IssuedNamespace, WalletAsset};
+#[cfg(not(target_arch = "wasm32"))]
 pub use ops::recover::recover;
+pub use ops::recover::RecoveryScan;
 pub use recovery::{RecoveredOutput, RecoveryError, RecoveryReport};

@@ -28,6 +28,7 @@ use sha2::{Digest, Sha256};
 use webylib::server::{
     Legalese, MiningReportRequest, NetworkMode, ReplaceRequest, ServerClient, ServerConfig,
 };
+use webylib::server_client::TokenStatus;
 use webylib::webcash::{PublicWebcash, SecretWebcash};
 use webylib::Amount;
 
@@ -197,29 +198,24 @@ async fn webylib_speaks_to_server_webcash() {
         })
         .await
         .expect("mine");
-    assert_eq!(mr.status, "success");
+    let _ = mr; // `Ok` ⇔ `{"status": "success"}` (wire::parse_mining_report)
 
     // 3. /api/v1/health_check — mined hash must be unspent.
     let secret = SecretWebcash::parse(&format!("e1.0:secret:{secret_hex}")).expect("secret");
     let public = secret.to_public();
     let hc = client
-        .health_check(std::slice::from_ref(&public))
+        .health_check(&[public.to_string()])
         .await
         .expect("hc");
-    assert_eq!(hc.status, "success");
-    let key = format!("e1:public:{}", hex::encode(public.hash));
-    let result = hc.results.get(&key).unwrap_or_else(|| {
-        panic!(
-            "missing key {key} in {:?}",
-            hc.results.keys().collect::<Vec<_>>()
-        )
-    });
-    assert_eq!(result.spent, Some(false), "expected unspent");
+    assert!(
+        matches!(hc.as_slice(), [TokenStatus::Unspent { .. }]),
+        "expected unspent, got {hc:?}"
+    );
 
     // 4. /api/v1/replace — split 1.0 → 0.4 + 0.6 via webylib's client.
     let out1_hex = "1111111111111111111111111111111111111111111111111111111111111111";
     let out2_hex = "2222222222222222222222222222222222222222222222222222222222222222";
-    let resp = client
+    client
         .replace(&ReplaceRequest {
             webcashes: vec![format!("e1.0:secret:{secret_hex}")],
             new_webcashes: vec![
@@ -229,8 +225,7 @@ async fn webylib_speaks_to_server_webcash() {
             legalese: Legalese { terms: true },
         })
         .await
-        .expect("replace");
-    assert_eq!(resp.status, "success");
+        .expect("replace"); // `Ok` ⇔ `{"status": "success"}`
 
     // 5. health_check post-replace.
     let amount04 = Amount::from_str("0.4").unwrap();
@@ -245,15 +240,16 @@ async fn webylib_speaks_to_server_webcash() {
     let pub_out1 = PublicWebcash::new(h_out1, amount04);
     let pub_out2 = PublicWebcash::new(h_out2, amount06);
     let hc2 = client
-        .health_check(&[pub_in.clone(), pub_out1.clone(), pub_out2.clone()])
+        .health_check(&[
+            pub_in.to_string(),
+            pub_out1.to_string(),
+            pub_out2.to_string(),
+        ])
         .await
         .expect("hc2");
-    let key_in = format!("e1:public:{}", hex::encode(pub_in.hash));
-    let key_out1 = format!("e0.4:public:{}", hex::encode(pub_out1.hash));
-    let key_out2 = format!("e0.6:public:{}", hex::encode(pub_out2.hash));
-    assert_eq!(hc2.results[&key_in].spent, Some(true));
-    assert_eq!(hc2.results[&key_out1].spent, Some(false));
-    assert_eq!(hc2.results[&key_out2].spent, Some(false));
+    assert!(matches!(hc2[0], TokenStatus::Spent { .. }), "{hc2:?}");
+    assert!(matches!(hc2[1], TokenStatus::Unspent { .. }), "{hc2:?}");
+    assert!(matches!(hc2[2], TokenStatus::Unspent { .. }), "{hc2:?}");
 }
 
 // Small helper for Amount::from_str inside test (Amount doesn't expose FromStr publicly).

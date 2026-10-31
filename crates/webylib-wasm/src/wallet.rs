@@ -535,62 +535,47 @@ pub fn wallet_apply_recover(
 
     #[derive(Deserialize)]
     struct RecoverBatch {
+        webcash_strings: Vec<String>,
         secrets: Vec<String>,
-        hashes: Vec<String>,
-        depths: Vec<u64>,
-    }
-
-    #[derive(Deserialize)]
-    struct HealthResults {
-        results: HashMap<String, HealthEntry>,
-    }
-
-    #[derive(Deserialize)]
-    struct HealthEntry {
-        amount: Option<String>,
-        spent: Option<bool>,
     }
 
     let batch: RecoverBatch =
         serde_json::from_str(batch_json).map_err(|e| JsError::new(&e.to_string()))?;
-    let health: HealthResults =
-        serde_json::from_str(health_results_json).map_err(|e| JsError::new(&e.to_string()))?;
+    if batch.webcash_strings.len() != batch.secrets.len() {
+        return Err(JsError::new("recover batch: lookup/secret count mismatch"));
+    }
+    // The shared strict parser: one status per requested token, matched by
+    // hash (the server normalises keys), fail-closed on any other shape.
+    let statuses = webylib::server_client::wire::parse_health_check(
+        200,
+        health_results_json.as_bytes(),
+        &batch.webcash_strings,
+    )
+    .map_err(|e| JsError::new(&e.to_string()))?;
 
     let mut recovered = 0;
     let mut found_any = false;
-
-    // Build lookup: hash → (secret, depth)
-    let lookup: HashMap<&str, (&str, u64)> = batch
-        .hashes
-        .iter()
-        .zip(batch.secrets.iter().zip(batch.depths.iter()))
-        .map(|(h, (s, d))| (h.as_str(), (s.as_str(), *d)))
-        .collect();
-
-    for (key, entry) in &health.results {
-        // Extract hash from "e1:public:<hash>"
-        let hash = key.split(':').nth(2).unwrap_or("");
-        if let Some((secret, _depth)) = lookup.get(hash) {
-            if entry.spent.is_some() {
+    for (status, secret) in statuses.iter().zip(&batch.secrets) {
+        use webylib::server_client::TokenStatus;
+        match status {
+            TokenStatus::Unknown => {}
+            TokenStatus::Spent { .. } => found_any = true,
+            TokenStatus::Unspent { amount } => {
                 found_any = true;
-            }
-            if entry.spent == Some(false) {
-                if let Some(amount_str) = &entry.amount {
-                    let amount = parse_amount_str(amount_str).unwrap_or(0);
-                    if amount > 0 {
-                        // Check not already stored
-                        let pub_hash = secret_hash(secret);
-                        if !state.outputs.iter().any(|o| o.public_hash == pub_hash) {
-                            state.outputs.push(Output {
-                                secret: secret.to_string(),
-                                public_hash: pub_hash,
-                                amount,
-                                created_at: timestamp.to_string(),
-                                spent: false,
-                            });
-                            recovered += 1;
-                        }
-                    }
+                let amount_str = amount
+                    .as_deref()
+                    .ok_or_else(|| JsError::new("recover: unspent output without amount"))?;
+                let amount = parse_amount_str(amount_str)?;
+                let pub_hash = secret_hash(secret);
+                if amount > 0 && !state.outputs.iter().any(|o| o.public_hash == pub_hash) {
+                    state.outputs.push(Output {
+                        secret: secret.to_string(),
+                        public_hash: pub_hash,
+                        amount,
+                        created_at: timestamp.to_string(),
+                        spent: false,
+                    });
+                    recovered += 1;
                 }
             }
         }

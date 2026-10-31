@@ -3,12 +3,10 @@
 //! This module handles HTTP communication with the Webcash server for operations
 //! like health checks, replacements, target queries, and mining report submissions.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 #[cfg(any(feature = "native", feature = "wasm"))]
 use crate::error::{Error, Result};
-#[cfg(any(feature = "native", feature = "wasm"))]
-use crate::webcash::PublicWebcash;
 #[cfg(any(feature = "native", feature = "wasm"))]
 use reqwest::Client;
 
@@ -55,16 +53,32 @@ impl NetworkMode {
     }
 }
 
-// ── Native-only: HTTP client ────────────────────────────────────
+// ── Async HTTP transport over the sans-IO wire protocol ─────────
 
-/// Cross-platform server client trait
+#[cfg(any(feature = "native", feature = "wasm"))]
+use crate::server_client::{wire, ClientError, TokenStatus};
+
+/// Mining parameters from `/api/v1/target` (the typed [`wire::Target`]).
+pub type TargetResponse = crate::server_client::wire::Target;
+/// Accepted `/api/v1/mining_report` acknowledgement ([`wire::MiningReportAck`]).
+pub type MiningReportResponse = crate::server_client::wire::MiningReportAck;
+
+/// Async webcash server client. Every method builds its request with
+/// [`wire`] and parses with the matching strict `wire::parse_*`, so the
+/// async (reqwest / browser fetch) and blocking ([`crate::server_client::Client`])
+/// transports share one protocol definition. Implemented by [`ServerClient`];
+/// a trait so wallets can be tested with an injected server.
 #[cfg(any(feature = "native", feature = "wasm"))]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 pub trait ServerClientTrait {
-    async fn health_check(&self, webcash: &[PublicWebcash]) -> Result<HealthResponse>;
-    async fn replace(&self, request: &ReplaceRequest) -> Result<ReplaceResponse>;
+    /// Per-token server state of public tokens, in request order.
+    async fn health_check(&self, public_tokens: &[String]) -> Result<Vec<TokenStatus>>;
+    /// Settle an N→M replacement; `Ok` only on `{"status": "success"}`.
+    async fn replace(&self, request: &ReplaceRequest) -> Result<()>;
+    /// Current mining target.
     async fn get_target(&self) -> Result<TargetResponse>;
+    /// Submit a solved preimage.
     async fn submit_mining_report(
         &self,
         report: &MiningReportRequest,
@@ -100,6 +114,13 @@ impl Default for ServerConfig {
 }
 
 #[cfg(any(feature = "native", feature = "wasm"))]
+impl From<ClientError> for Error {
+    fn from(e: ClientError) -> Self {
+        Error::server(e.to_string())
+    }
+}
+
+#[cfg(any(feature = "native", feature = "wasm"))]
 /// Webcash server client (Clone shares connection pool)
 #[derive(Clone)]
 pub struct ServerClient {
@@ -127,78 +148,53 @@ impl ServerClient {
         Ok(ServerClient { client, config })
     }
 
-    /// POST a JSON body as a CORS-simple request: the one webycash POST
-    /// content-type ([`crate::server_client::wire::POST_CONTENT_TYPE`]) on
-    /// every target, so browser `fetch` never preflights. The server parses
-    /// the JSON body regardless of content-type.
-    fn post_json_body<B: serde::Serialize>(
+    /// Send one [`wire::Request`] verbatim (exactly its headers; on wasm32
+    /// that is a CORS-simple browser `fetch`). Non-2xx still yields
+    /// `(status, body)`; only a failure before a status line is `Transport`.
+    pub async fn send(
         &self,
-        url: &str,
-        body: &B,
-    ) -> Result<reqwest::RequestBuilder> {
-        let json_str = serde_json::to_string(body)?;
-        Ok(self
-            .client
-            .post(url)
-            .header(
-                "Content-Type",
-                crate::server_client::wire::POST_CONTENT_TYPE,
-            )
-            .body(json_str))
+        req: &wire::Request,
+    ) -> std::result::Result<(u16, Vec<u8>), ClientError> {
+        let url = req.url(self.config.base_url());
+        let mut rb = match req.method {
+            wire::Method::Get => self.client.get(&url),
+            wire::Method::Post => self.client.post(&url).body(req.body.clone()),
+        };
+        for (k, v) in &req.headers {
+            rb = rb.header(*k, v.as_str());
+        }
+        let resp = rb
+            .send()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))?;
+        let status = resp.status().as_u16();
+        let body = resp
+            .bytes()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))?;
+        Ok((status, body.to_vec()))
     }
 
-    /// Check the health status of webcash entries
-    pub async fn health_check(&self, webcash: &[PublicWebcash]) -> Result<HealthResponse> {
-        let request_data: Vec<String> = webcash.iter().map(|wc| wc.to_string()).collect();
-        let url = format!("{}{}", self.config.base_url(), endpoints::HEALTH_CHECK);
-        let response = self.post_json_body(&url, &request_data)?.send().await?;
-
-        if !response.status().is_success() {
-            return Err(Error::server("Health check request failed"));
-        }
-
-        let health_response: HealthResponse = response.json().await?;
-        Ok(health_response)
+    /// Per-token server state of public tokens, in request order.
+    pub async fn health_check(&self, public_tokens: &[String]) -> Result<Vec<TokenStatus>> {
+        let (status, body) = self.send(&wire::health_check(public_tokens)?).await?;
+        Ok(wire::parse_health_check(status, &body, public_tokens)?)
     }
 
     /// Submit a replacement request to the server
-    pub async fn replace(&self, request: &ReplaceRequest) -> Result<ReplaceResponse> {
-        let url = format!("{}{}", self.config.base_url(), endpoints::REPLACE);
-        let response = self.post_json_body(&url, request)?.send().await?;
-
-        let status = response.status();
-        let response_text = response.text().await?;
-
-        if !status.is_success() {
-            if let Ok(error_response) = serde_json::from_str::<serde_json::Value>(&response_text) {
-                if let Some(error_msg) = error_response.get("error").and_then(|v| v.as_str()) {
-                    return Err(Error::server(format!(
-                        "Replace request failed: {}",
-                        error_msg
-                    )));
-                }
-            }
-            return Err(Error::server(format!(
-                "Replace request failed with status {}: {}",
-                status, response_text
-            )));
+    pub async fn replace(&self, request: &ReplaceRequest) -> Result<()> {
+        if !request.legalese.terms {
+            return Err(Error::TermsNotAccepted);
         }
-
-        let replace_response: ReplaceResponse = serde_json::from_str(&response_text)?;
-        Ok(replace_response)
+        let req = wire::replace(&request.webcashes, &request.new_webcashes)?;
+        let (status, body) = self.send(&req).await?;
+        Ok(wire::parse_success("replace", status, &body)?)
     }
 
     /// Get current mining target information
     pub async fn get_target(&self) -> Result<TargetResponse> {
-        let url = format!("{}{}", self.config.base_url(), endpoints::TARGET);
-        let response = self.client.get(&url).send().await?;
-
-        if !response.status().is_success() {
-            return Err(Error::server("Target request failed"));
-        }
-
-        let target_response: TargetResponse = response.json().await?;
-        Ok(target_response)
+        let (status, body) = self.send(&wire::target()).await?;
+        Ok(wire::parse_target(status, &body)?)
     }
 
     /// Submit a mining report
@@ -206,15 +202,11 @@ impl ServerClient {
         &self,
         report: &MiningReportRequest,
     ) -> Result<MiningReportResponse> {
-        let url = format!("{}{}", self.config.base_url(), endpoints::MINING_REPORT);
-        let response = self.post_json_body(&url, report)?.send().await?;
-
-        if !response.status().is_success() {
-            return Err(Error::server("Mining report submission failed"));
+        if !report.legalese.terms {
+            return Err(Error::TermsNotAccepted);
         }
-
-        let mining_response: MiningReportResponse = response.json().await?;
-        Ok(mining_response)
+        let (status, body) = self.send(&wire::mining_report(&report.preimage)?).await?;
+        Ok(wire::parse_mining_report(status, &body)?)
     }
 }
 
@@ -222,10 +214,10 @@ impl ServerClient {
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl ServerClientTrait for ServerClient {
-    async fn health_check(&self, webcash: &[PublicWebcash]) -> Result<HealthResponse> {
-        self.health_check(webcash).await
+    async fn health_check(&self, public_tokens: &[String]) -> Result<Vec<TokenStatus>> {
+        self.health_check(public_tokens).await
     }
-    async fn replace(&self, request: &ReplaceRequest) -> Result<ReplaceResponse> {
+    async fn replace(&self, request: &ReplaceRequest) -> Result<()> {
         self.replace(request).await
     }
     async fn get_target(&self) -> Result<TargetResponse> {
@@ -237,20 +229,6 @@ impl ServerClientTrait for ServerClient {
     ) -> Result<MiningReportResponse> {
         self.submit_mining_report(report).await
     }
-}
-
-/// Health check response
-#[derive(Debug, Deserialize)]
-pub struct HealthResponse {
-    pub status: String,
-    pub results: std::collections::HashMap<String, HealthResult>,
-}
-
-/// Individual health check result
-#[derive(Debug, Deserialize)]
-pub struct HealthResult {
-    pub spent: Option<bool>,
-    pub amount: Option<String>,
 }
 
 /// Replacement request
@@ -267,32 +245,9 @@ pub struct Legalese {
     pub terms: bool,
 }
 
-/// Replacement response
-#[derive(Debug, Deserialize)]
-pub struct ReplaceResponse {
-    pub status: String,
-}
-
-/// Target information response
-#[derive(Debug, Deserialize)]
-pub struct TargetResponse {
-    pub difficulty_target_bits: u32,
-    pub epoch: u32,
-    pub mining_amount: String,
-    pub mining_subsidy_amount: String,
-    pub ratio: f64,
-}
-
 /// Mining report request
 #[derive(Debug, Serialize)]
 pub struct MiningReportRequest {
     pub preimage: String,
     pub legalese: Legalese,
-}
-
-/// Mining report response
-#[derive(Debug, Deserialize)]
-pub struct MiningReportResponse {
-    pub status: String,
-    pub difficulty_target: Option<u32>,
 }

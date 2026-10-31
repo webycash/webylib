@@ -427,6 +427,140 @@ pub mod wire {
             )),
         }
     }
+
+    /// Mining parameters from `GET /api/v1/target`.
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Target {
+        /// Required leading zero bits of `sha256(preimage)`.
+        pub difficulty_target_bits: u32,
+        /// Difficulty epoch.
+        pub epoch: u32,
+        /// Miner reward per solution, decimal string (`"195.3125"`).
+        pub mining_amount: String,
+        /// Subsidy per solution, decimal string.
+        pub mining_subsidy_amount: String,
+        /// `mining_amount / (mining_amount + subsidy)` as the server reports it.
+        pub ratio: f64,
+    }
+
+    /// Server acknowledgement of an accepted `POST /api/v1/mining_report`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct MiningReportAck {
+        /// Difficulty the server will require next, when it reports one.
+        pub difficulty_target: Option<u32>,
+    }
+
+    fn json_object(
+        what: &str,
+        status: u16,
+        body: &[u8],
+    ) -> ClientResult<serde_json::Map<String, serde_json::Value>> {
+        let text = check(status, body)?;
+        match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(serde_json::Value::Object(map)) => Ok(map),
+            Ok(_) => Err(ClientError::Decode(format!(
+                "{what}: body is not a JSON object"
+            ))),
+            Err(e) => Err(ClientError::Decode(format!("{what}: not JSON: {e}"))),
+        }
+    }
+
+    fn success_object(
+        what: &str,
+        status: u16,
+        body: &[u8],
+    ) -> ClientResult<serde_json::Map<String, serde_json::Value>> {
+        let map = json_object(what, status, body)?;
+        if map.get("status").and_then(|v| v.as_str()) == Some("success") {
+            Ok(map)
+        } else {
+            Err(ClientError::Decode(format!(
+                "{what}: status is not \"success\""
+            )))
+        }
+    }
+
+    /// Parse the `{"status": "success"}` acknowledgement of a state-changing
+    /// POST (`/replace`, `/burn`). Non-2xx ⇒ `Http`; any other 2xx ⇒ `Decode`,
+    /// so a proxy page or truncated body is never mistaken for a settled write.
+    pub fn parse_success(what: &str, status: u16, body: &[u8]) -> ClientResult<()> {
+        success_object(what, status, body).map(|_| ())
+    }
+
+    fn field_u32(
+        what: &str,
+        map: &serde_json::Map<String, serde_json::Value>,
+        key: &str,
+    ) -> ClientResult<u32> {
+        map.get(key)
+            .and_then(|v| v.as_u64())
+            .and_then(|n| u32::try_from(n).ok())
+            .ok_or_else(|| ClientError::Decode(format!("{what}: {key} is not a u32")))
+    }
+
+    /// Decimal amount field: a JSON string or number of the form `d+(.d{1,8})?`.
+    fn field_decimal(
+        what: &str,
+        map: &serde_json::Map<String, serde_json::Value>,
+        key: &str,
+    ) -> ClientResult<String> {
+        let raw = match map.get(key) {
+            Some(serde_json::Value::String(s)) => s.clone(),
+            Some(serde_json::Value::Number(n)) => n.to_string(),
+            _ => {
+                return Err(ClientError::Decode(format!(
+                    "{what}: {key} is not a decimal amount"
+                )))
+            }
+        };
+        let (whole, frac) = raw.split_once('.').unwrap_or((raw.as_str(), ""));
+        let ok = !whole.is_empty()
+            && whole.chars().all(|c| c.is_ascii_digit())
+            && frac.len() <= 8
+            && frac.chars().all(|c| c.is_ascii_digit())
+            && !(raw.contains('.') && frac.is_empty());
+        if ok {
+            Ok(raw)
+        } else {
+            Err(ClientError::Decode(format!(
+                "{what}: {key} is not a decimal amount: {raw:?}"
+            )))
+        }
+    }
+
+    /// Strictly parse a `/target` response. Non-2xx ⇒ `Http`; any missing or
+    /// mistyped field ⇒ `Decode` (a miner must never hash against a guessed
+    /// difficulty).
+    pub fn parse_target(status: u16, body: &[u8]) -> ClientResult<Target> {
+        const WHAT: &str = "target";
+        let map = json_object(WHAT, status, body)?;
+        let ratio = map
+            .get("ratio")
+            .and_then(|v| v.as_f64())
+            .filter(|r| r.is_finite() && (0.0..=1.0).contains(r))
+            .ok_or_else(|| ClientError::Decode(format!("{WHAT}: ratio is not in [0, 1]")))?;
+        Ok(Target {
+            difficulty_target_bits: field_u32(WHAT, &map, "difficulty_target_bits")?,
+            epoch: field_u32(WHAT, &map, "epoch")?,
+            mining_amount: field_decimal(WHAT, &map, "mining_amount")?,
+            mining_subsidy_amount: field_decimal(WHAT, &map, "mining_subsidy_amount")?,
+            ratio,
+        })
+    }
+
+    /// Strictly parse a `/mining_report` response. Non-2xx ⇒ `Http` (the body
+    /// carries the server's rejection reason); a 2xx whose `status` is not
+    /// `"success"`, or whose `difficulty_target` is present but not a u32 ⇒
+    /// `Decode`.
+    pub fn parse_mining_report(status: u16, body: &[u8]) -> ClientResult<MiningReportAck> {
+        const WHAT: &str = "mining_report";
+        let map = success_object(WHAT, status, body)?;
+        let difficulty_target = match map.get("difficulty_target") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(_) => Some(field_u32(WHAT, &map, "difficulty_target")?),
+        };
+        Ok(MiningReportAck { difficulty_target })
+    }
 }
 
 /// Minimal asset-agnostic blocking client (native only). One instance per
@@ -470,7 +604,7 @@ impl Client {
     /// amount conservation. Non-splittable: 1:1 (same body shape; the
     /// server enforces arity per its compiled flavor).
     pub fn replace(&self, inputs: &[String], outputs: &[String]) -> ClientResult<()> {
-        self.execute(&wire::replace(inputs, outputs)?).map(|_| ())
+        self.settle("replace", &wire::replace(inputs, outputs)?)
     }
 
     /// `POST /api/v1/replace` with the HTLC extensions (RGB server only;
@@ -483,18 +617,15 @@ impl Client {
         htlc_locks: &[HtlcLockEntry],
         htlc_witnesses: &[HtlcWitnessEntry],
     ) -> ClientResult<()> {
-        self.execute(&wire::replace_with_htlc(
-            inputs,
-            outputs,
-            htlc_locks,
-            htlc_witnesses,
-        )?)
-        .map(|_| ())
+        self.settle(
+            "replace",
+            &wire::replace_with_htlc(inputs, outputs, htlc_locks, htlc_witnesses)?,
+        )
     }
 
     /// `POST /api/v1/burn` — mark a single secret spent permanently.
     pub fn burn(&self, secret_token: &str) -> ClientResult<()> {
-        self.execute(&wire::burn(secret_token)?).map(|_| ())
+        self.settle("burn", &wire::burn(secret_token)?)
     }
 
     /// `POST /api/v1/health_check` — returns the raw 2xx response body.
@@ -511,8 +642,9 @@ impl Client {
     }
 
     /// `POST /api/v1/mining_report` — submit a PoW preimage.
-    pub fn mining_report(&self, preimage: &str) -> ClientResult<()> {
-        self.execute(&wire::mining_report(preimage)?).map(|_| ())
+    pub fn mining_report(&self, preimage: &str) -> ClientResult<wire::MiningReportAck> {
+        let (status, body) = self.send(&wire::mining_report(preimage)?)?;
+        wire::parse_mining_report(status, body.as_bytes())
     }
 
     /// `POST /api/v1/issue` — operator-signed mint. Caller supplies the
@@ -523,13 +655,19 @@ impl Client {
     }
 
     /// `GET /api/v1/target` — current mining target.
-    pub fn target(&self) -> ClientResult<String> {
-        self.execute(&wire::target())
+    pub fn target(&self) -> ClientResult<wire::Target> {
+        let (status, body) = self.send(&wire::target())?;
+        wire::parse_target(status, body.as_bytes())
     }
 
     /// `GET /api/v1/stats` — economy statistics.
     pub fn stats(&self) -> ClientResult<String> {
         self.execute(&wire::stats())
+    }
+
+    fn settle(&self, what: &str, req: &wire::Request) -> ClientResult<()> {
+        let (status, body) = self.send(req)?;
+        wire::parse_success(what, status, body.as_bytes())
     }
 
     fn execute(&self, req: &wire::Request) -> ClientResult<String> {
@@ -727,6 +865,80 @@ mod tests {
         assert!(matches!(
             wire::check(404, b"x"),
             Err(ClientError::Http { status: 404, .. })
+        ));
+    }
+
+    #[test]
+    fn parse_success_requires_success_status() {
+        assert!(wire::parse_success("replace", 200, br#"{"status": "success"}"#).is_ok());
+        for body in [
+            &br#"{"status":"error"}"#[..],
+            b"{}",
+            b"<html>ok</html>",
+            b"",
+        ] {
+            assert!(
+                matches!(
+                    wire::parse_success("replace", 200, body),
+                    Err(ClientError::Decode(_))
+                ),
+                "{body:?}"
+            );
+        }
+        assert!(matches!(
+            wire::parse_success("replace", 500, b"can only be replaced by itself"),
+            Err(ClientError::Http { status: 500, .. })
+        ));
+    }
+
+    #[test]
+    fn parse_target_is_strict() {
+        let ok = br#"{"difficulty_target_bits":28,"epoch":3,"mining_amount":"200000","mining_subsidy_amount":10000.5,"ratio":0.25}"#;
+        let t = wire::parse_target(200, ok).unwrap();
+        assert_eq!(t.difficulty_target_bits, 28);
+        assert_eq!(t.epoch, 3);
+        assert_eq!(t.mining_amount, "200000");
+        assert_eq!(t.mining_subsidy_amount, "10000.5");
+        assert_eq!(t.ratio, 0.25);
+        let bad: [&[u8]; 6] = [
+            br#"{"epoch":3,"mining_amount":"1","mining_subsidy_amount":"1","ratio":0}"#,
+            br#"{"difficulty_target_bits":-1,"epoch":3,"mining_amount":"1","mining_subsidy_amount":"1","ratio":0}"#,
+            br#"{"difficulty_target_bits":1,"epoch":3,"mining_amount":"1e9","mining_subsidy_amount":"1","ratio":0}"#,
+            br#"{"difficulty_target_bits":1,"epoch":3,"mining_amount":"1.123456789","mining_subsidy_amount":"1","ratio":0}"#,
+            br#"{"difficulty_target_bits":1,"epoch":3,"mining_amount":"1","mining_subsidy_amount":"1","ratio":1.5}"#,
+            b"[]",
+        ];
+        for body in bad {
+            assert!(
+                matches!(wire::parse_target(200, body), Err(ClientError::Decode(_))),
+                "{}",
+                String::from_utf8_lossy(body)
+            );
+        }
+        assert!(matches!(
+            wire::parse_target(503, b"down"),
+            Err(ClientError::Http { status: 503, .. })
+        ));
+    }
+
+    #[test]
+    fn parse_mining_report_requires_success() {
+        let ack = wire::parse_mining_report(200, br#"{"status":"success","difficulty_target":26}"#)
+            .unwrap();
+        assert_eq!(ack.difficulty_target, Some(26));
+        let bare = wire::parse_mining_report(200, br#"{"status":"success"}"#).unwrap();
+        assert_eq!(bare.difficulty_target, None);
+        assert!(matches!(
+            wire::parse_mining_report(200, br#"{"status":"error"}"#),
+            Err(ClientError::Decode(_))
+        ));
+        assert!(matches!(
+            wire::parse_mining_report(200, br#"{"status":"success","difficulty_target":"x"}"#),
+            Err(ClientError::Decode(_))
+        ));
+        assert!(matches!(
+            wire::parse_mining_report(400, b"Didn't use a new secret value."),
+            Err(ClientError::Http { status: 400, .. })
         ));
     }
 

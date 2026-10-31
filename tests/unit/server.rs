@@ -69,46 +69,41 @@ fn test_request_response_structures() {
 }
 
 #[test]
-fn test_response_deserialization() {
-    // Test HealthResponse deserialization
-    let health_json = r#"{
-        "status": "success",
-        "results": {
-            "e1.00000000:public:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890": {
-                "spent": false,
-                "amount": "1.00000000"
-            }
-        }
-    }"#;
+fn test_response_parsing() {
+    use webylib::server_client::{wire, TokenStatus};
 
-    let health_response: HealthResponse = serde_json::from_str(health_json).unwrap();
-    assert_eq!(health_response.status, "success");
-    assert_eq!(health_response.results.len(), 1);
+    // health_check: the server normalises keys to `e{amount}:public:{hash}`;
+    // statuses come back in request order, matched by hash.
+    let h = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
+    let requested = vec![format!("e1.00000000:public:{h}")];
+    let health_json = format!(
+        r#"{{"status":"success","results":{{"e1:public:{h}":{{"spent":false,"amount":"1"}}}}}}"#
+    );
+    let statuses = wire::parse_health_check(200, health_json.as_bytes(), &requested).unwrap();
+    assert_eq!(
+        statuses,
+        vec![TokenStatus::Unspent {
+            amount: Some("1".into())
+        }]
+    );
 
-    // Test TargetResponse deserialization
     let target_json = r#"{
         "difficulty_target_bits": 28,
         "epoch": 12345,
-        "mining_amount": "10000000000000",
-        "mining_subsidy_amount": "5000000000000",
-        "ratio": 2.0
+        "mining_amount": "200000",
+        "mining_subsidy_amount": "10000",
+        "ratio": 0.5
     }"#;
-
-    let target_response: TargetResponse = serde_json::from_str(target_json).unwrap();
+    let target_response: TargetResponse = wire::parse_target(200, target_json.as_bytes()).unwrap();
     assert_eq!(target_response.difficulty_target_bits, 28);
     assert_eq!(target_response.epoch, 12345);
-    assert_eq!(target_response.mining_amount, "10000000000000");
-    assert_eq!(target_response.mining_subsidy_amount, "5000000000000");
-    assert_eq!(target_response.ratio, 2.0);
+    assert_eq!(target_response.mining_amount, "200000");
+    assert_eq!(target_response.mining_subsidy_amount, "10000");
+    assert_eq!(target_response.ratio, 0.5);
 
-    // Test MiningReportResponse deserialization
-    let mining_json = r#"{
-        "status": "success",
-        "difficulty_target": 26
-    }"#;
-
-    let mining_response: MiningReportResponse = serde_json::from_str(mining_json).unwrap();
-    assert_eq!(mining_response.status, "success");
+    let mining_json = r#"{"status": "success", "difficulty_target": 26}"#;
+    let mining_response: MiningReportResponse =
+        wire::parse_mining_report(200, mining_json.as_bytes()).unwrap();
     assert_eq!(mining_response.difficulty_target, Some(26));
 }
 

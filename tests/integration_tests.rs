@@ -80,13 +80,10 @@ async fn test_server_api_endpoints() {
     let server_client = crate::server::ServerClient::new().expect("Failed to create server client");
 
     let webcash = SecretWebcash::parse(&test_secret).expect("Failed to parse test webcash");
-    let public_webcash = vec![webcash.to_public()];
+    let public_tokens = vec![webcash.to_public().to_string()];
 
-    match server_client.health_check(&public_webcash).await {
-        Ok(response) => println!(
-            "✅ Health check successful: {} entries",
-            response.results.len()
-        ),
+    match server_client.health_check(&public_tokens).await {
+        Ok(statuses) => println!("✅ Health check successful: {} entries", statuses.len()),
         Err(e) => println!("⚠️  Health check failed: {}", e),
     }
 
@@ -808,9 +805,12 @@ async fn test_phase2_all_operations() {
     let server_client =
         crate::server::ServerClient::new().expect("❌ Failed to create server client");
 
-    let public_webcash: Vec<PublicWebcash> = webcash_list.iter().map(|wc| wc.to_public()).collect();
+    let public_tokens: Vec<String> = webcash_list
+        .iter()
+        .map(|wc| wc.to_public().to_string())
+        .collect();
 
-    let _ = server_client.health_check(&public_webcash).await;
+    let _ = server_client.health_check(&public_tokens).await;
 
     match server_client.get_target().await {
         Ok(_target) => println!("✅ Target query successful"),

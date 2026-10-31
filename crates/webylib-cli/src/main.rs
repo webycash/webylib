@@ -313,8 +313,12 @@ fn run_mining_report(server: &str, preimage: &str) -> Result<()> {
 
 fn run_target(server: &str) -> Result<()> {
     let client = Client::new(server.to_string());
-    let body = client.target().context("target")?;
-    println!("{body}");
+    let t = client.target().context("target")?;
+    // Amounts are wire-validated decimals, so no JSON escaping is needed.
+    println!(
+        "{{\"difficulty_target_bits\": {}, \"epoch\": {}, \"mining_amount\": \"{}\", \"mining_subsidy_amount\": \"{}\", \"ratio\": {}}}",
+        t.difficulty_target_bits, t.epoch, t.mining_amount, t.mining_subsidy_amount, t.ratio
+    );
     Ok(())
 }
 
